@@ -1,0 +1,60 @@
+@use './tokens.scss' as *;
+
+page {
+  min-height: 100%;
+  background: $color-page;
+  color: $color-text;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 28rpx;
+}
+
+view,
+text,
+image,
+scroll-view {
+  box-sizing: border-box;
+}
+
+button {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  line-height: inherit;
+
+  &::after {
+    border: 0;
+  }
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: calc(var(--status-bar-height) + 28rpx) 32rpx 44rpx;
+  background:
+    radial-gradient(circle at 88% 6%, rgba(255, 231, 200, 0.55), transparent 28%),
+    $color-page;
+}
+
+.page-title {
+  margin: 8rpx 0 8rpx;
+  font-size: 44rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+}
+
+.page-subtitle {
+  color: $color-text-secondary;
+  font-size: 25rpx;
+}
+
+.section-title {
+  font-size: 31rpx;
+  font-weight: 700;
+}
+
+.surface-card {
+  background: $color-card;
+  border: 1rpx solid rgba(119, 81, 51, 0.04);
+  border-radius: $radius-card;
+  box-shadow: $shadow-card;
+}
