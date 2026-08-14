@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import ComingPage from '@/components/ComingPage.vue'
+import AppTabBar from '@/components/AppTabBar.vue'
 import { todayRecipe } from '@/mocks/recipe'
+import { useTabBarSelection } from '@/composables/useTabBarSelection'
+
+useTabBarSelection(2)
 
 const days = [
   { week: '一', date: 27 },
@@ -46,6 +50,9 @@ const meals = [
         </scroll-view>
       </view>
     </view>
+    <!-- #ifndef MP-WEIXIN -->
+    <AppTabBar :selected="2" />
+    <!-- #endif -->
   </ComingPage>
 </template>
 

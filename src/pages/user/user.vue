@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import ComingPage from '@/components/ComingPage.vue'
+import AppTabBar from '@/components/AppTabBar.vue'
+import { useTabBarSelection } from '@/composables/useTabBarSelection'
+
+useTabBarSelection(4)
 
 const menuItems = [
   { icon: '🍴', label: '我的口味', color: '#fff2df' },
@@ -42,6 +46,9 @@ const menuItems = [
       </view>
       <text class="reminder__pot">🍲</text>
     </view>
+    <!-- #ifndef MP-WEIXIN -->
+    <AppTabBar :selected="4" />
+    <!-- #endif -->
   </ComingPage>
 </template>
 

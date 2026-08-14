@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import ComingPage from '@/components/ComingPage.vue'
+import AppTabBar from '@/components/AppTabBar.vue'
 import RecipeCard from '@/components/RecipeCard.vue'
 import { cookCategories, todayRecipe } from '@/mocks/recipe'
+import { useTabBarSelection } from '@/composables/useTabBarSelection'
+
+useTabBarSelection(1)
 
 function openCategory(id: string) {
   uni.navigateTo({ url: `/pages/recipe/list?category=${id}` })
@@ -45,6 +49,9 @@ function openCategory(id: string) {
       <text class="muted">换一换 ↻</text>
     </view>
     <RecipeCard :recipe="todayRecipe" badge="恢复期推荐" />
+    <!-- #ifndef MP-WEIXIN -->
+    <AppTabBar :selected="1" />
+    <!-- #endif -->
   </ComingPage>
 </template>
 

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import ComingPage from '@/components/ComingPage.vue'
+import AppTabBar from '@/components/AppTabBar.vue'
 import RecipeCard from '@/components/RecipeCard.vue'
 import { todayRecipe } from '@/mocks/recipe'
+import { useTabBarSelection } from '@/composables/useTabBarSelection'
 
 const active = ref<'favorite' | 'cooked'>('favorite')
+useTabBarSelection(3)
 </script>
 
 <template>
@@ -21,6 +24,9 @@ const active = ref<'favorite' | 'cooked'>('favorite')
 
     <button class="add-recipe surface-card">＋　录入我的菜</button>
     <view class="tip surface-card">💡　收藏常做的菜，计划时一键添加，搭配更省心！</view>
+    <!-- #ifndef MP-WEIXIN -->
+    <AppTabBar :selected="3" />
+    <!-- #endif -->
   </ComingPage>
 </template>
 

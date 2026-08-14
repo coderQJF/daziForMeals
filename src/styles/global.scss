@@ -8,6 +8,13 @@ page {
   font-size: 28rpx;
 }
 
+/* H5 使用跨端 Vue 自定义底栏，隐藏 uni-app 自动生成的原生样式底栏。 */
+/* #ifdef H5 */
+uni-tabbar {
+  display: none !important;
+}
+/* #endif */
+
 view,
 text,
 image,
