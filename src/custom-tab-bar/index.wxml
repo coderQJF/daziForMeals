@@ -7,7 +7,6 @@
     data-path="{{item.pagePath}}"
     bindtap="switchTab"
   >
-    <view class="tabbar__active-bg"></view>
     <image class="tabbar__icon" src="{{selected === index ? item.selectedIcon : item.icon}}" mode="aspectFit"></image>
     <text class="tabbar__text" style="color: {{selected === index ? selectedColor : color}}">{{item.text}}</text>
   </view>

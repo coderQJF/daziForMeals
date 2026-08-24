@@ -1,8 +1,8 @@
 Component({
   data: {
     selected: 0,
-    color: '#999999',
-    selectedColor: '#ff7a1a',
+    color: '#9da1aa',
+    selectedColor: '#ff6800',
     list: [
       { pagePath: '/pages/index/index', text: '首页', icon: '/static/tabbar/home.png', selectedIcon: '/static/tabbar/home-active.png' },
       { pagePath: '/pages/category/category', text: '分类', icon: '/static/tabbar/category.png', selectedIcon: '/static/tabbar/category-active.png' },

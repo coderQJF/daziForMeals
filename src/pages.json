@@ -23,6 +23,13 @@
       }
     },
     {
+      "path": "pages/plan/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FAF7F2"
+      }
+    },
+    {
       "path": "pages/favorite/favorite",
       "style": {
         "navigationStyle": "custom",
@@ -69,8 +76,8 @@
   },
   "tabBar": {
     "custom": true,
-    "color": "#999999",
-    "selectedColor": "#FF7A1A",
+    "color": "#9DA1AA",
+    "selectedColor": "#FF6800",
     "backgroundColor": "#FFFFFF",
     "borderStyle": "white",
     "list": [

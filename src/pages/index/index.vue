@@ -52,10 +52,7 @@ onPullDownRefresh(() => {
       <view class="header__row">
         <text class="brand">饭搭子</text>
         <button class="notice" aria-label="消息通知">
-          <view class="bell">
-            <view class="bell__body" />
-            <view class="bell__clapper" />
-          </view>
+          <image class="notice__icon" src="/static/images/home/icon-bell.png" mode="aspectFit" />
         </button>
       </view>
       <view class="greeting">
@@ -65,31 +62,31 @@ onPullDownRefresh(() => {
     </view>
 
     <button class="search" @click="openSearch">
-      <view class="search__icon" />
+      <image class="search__icon" src="/static/images/home/icon-search.png" mode="aspectFit" />
       <text class="search__placeholder">搜索菜谱、食材或功效</text>
     </button>
 
     <view class="quick-grid">
-      <button
-        v-for="(item, index) in quickCategories"
-        :key="item.id"
-        class="quick-card"
-        :class="`quick-card--${index + 1}`"
-        @click="handleQuickAction(item)"
-      >
-        <image
-          class="quick-card__image"
-          :src="`/static/images/home/${item.id}.png`"
-          mode="aspectFit"
-        />
-        <text class="quick-card__name">{{ item.name }}</text>
-        <text class="quick-card__desc">{{ item.description }}</text>
+      <button class="quick-card quick-card--1" @click="handleQuickAction(quickCategories[0])">
+        <image class="quick-card__image" src="/static/images/home/action-cook.png" mode="aspectFit" />
+        <text class="quick-card__name">{{ quickCategories[0].name }}</text>
+        <text class="quick-card__desc">{{ quickCategories[0].description }}</text>
+      </button>
+      <button class="quick-card quick-card--2" @click="handleQuickAction(quickCategories[1])">
+        <image class="quick-card__image" src="/static/images/home/action-takeout.png" mode="aspectFit" />
+        <text class="quick-card__name">{{ quickCategories[1].name }}</text>
+        <text class="quick-card__desc">{{ quickCategories[1].description }}</text>
+      </button>
+      <button class="quick-card quick-card--3" @click="handleQuickAction(quickCategories[2])">
+        <image class="quick-card__image" src="/static/images/home/action-recover.png" mode="aspectFit" />
+        <text class="quick-card__name">{{ quickCategories[2].name }}</text>
+        <text class="quick-card__desc">{{ quickCategories[2].description }}</text>
       </button>
     </view>
 
     <button class="blind-box" @click="refreshRecommendation">
       <view class="blind-box__icon-wrap">
-        <image class="blind-box__icon" src="/static/images/home/blind-box.png" mode="aspectFit" />
+        <image class="blind-box__icon" src="/static/images/home/icon-blind-box.png" mode="aspectFit" />
       </view>
       <view class="blind-box__copy">
         <text class="blind-box__title">随机盲盒</text>
@@ -102,7 +99,7 @@ onPullDownRefresh(() => {
       <view class="status-card__header">
         <text class="section-title">我的状态</text>
         <button class="edit" aria-label="编辑状态">
-          <view class="edit__pencil" />
+          <image class="edit__icon" src="/static/images/home/icon-edit.png" mode="aspectFit" />
         </button>
       </view>
       <scroll-view class="status-card__scroll" scroll-x :show-scrollbar="false">
@@ -138,7 +135,7 @@ onPullDownRefresh(() => {
         </view>
         <view class="recipe-card__meta">
           <view class="meta-item"><view class="clock" />{{ recommendation.cookTime }} 分钟</view>
-          <view class="meta-item"><text class="person">♙</text>约 {{ recommendation.calories }} kcal</view>
+          <view class="meta-item"><view class="person-icon" />约 {{ recommendation.calories }} kcal</view>
         </view>
       </view>
     </button>
@@ -155,9 +152,10 @@ onPullDownRefresh(() => {
 .home {
   position: relative;
   min-height: 100vh;
-  overflow: hidden;
-  padding: calc(var(--status-bar-height) + 22rpx) 28rpx 152rpx;
+  overflow-x: hidden;
+  padding: calc(var(--status-bar-height) + 26rpx) 32rpx calc(env(safe-area-inset-bottom) + 164rpx);
   background: #fdf9f4;
+  box-sizing: border-box;
 }
 
 .home__glow {
@@ -205,44 +203,9 @@ onPullDownRefresh(() => {
   justify-content: center;
 }
 
-.bell {
-  position: relative;
-  width: 35rpx;
-  height: 40rpx;
-}
-
-.bell__body {
-  position: absolute;
-  top: 3rpx;
-  left: 5rpx;
-  width: 25rpx;
-  height: 28rpx;
-  border: 3rpx solid #1d252b;
-  border-top-left-radius: 18rpx;
-  border-top-right-radius: 18rpx;
-  border-bottom: 0;
-
-  &::before {
-    position: absolute;
-    bottom: -5rpx;
-    left: -7rpx;
-    width: 33rpx;
-    height: 9rpx;
-    border: 3rpx solid #1d252b;
-    border-top: 0;
-    border-radius: 0 0 18rpx 18rpx;
-    content: '';
-  }
-}
-
-.bell__clapper {
-  position: absolute;
-  bottom: 0;
-  left: 15rpx;
-  width: 7rpx;
-  height: 5rpx;
-  border-radius: 0 0 8rpx 8rpx;
-  background: #1d252b;
+.notice__icon {
+  width: 43rpx;
+  height: 43rpx;
 }
 
 .greeting {
@@ -264,8 +227,8 @@ onPullDownRefresh(() => {
 .search {
   display: flex;
   width: 100%;
-  height: 88rpx;
-  margin-top: 21rpx;
+  height: 96rpx;
+  margin-top: 23rpx;
   padding: 0 28rpx;
   align-items: center;
   border: 1rpx solid rgba(90, 64, 44, 0.025);
@@ -276,34 +239,19 @@ onPullDownRefresh(() => {
 }
 
 .search__icon {
-  position: relative;
-  width: 30rpx;
-  height: 30rpx;
-  border: 3rpx solid #92969c;
-  border-radius: 50%;
-
-  &::after {
-    position: absolute;
-    right: -10rpx;
-    bottom: -7rpx;
-    width: 14rpx;
-    height: 3rpx;
-    border-radius: 2rpx;
-    background: #92969c;
-    content: '';
-    transform: rotate(45deg);
-  }
+  width: 39rpx;
+  height: 39rpx;
 }
 
 .search__placeholder {
   margin-left: 22rpx;
   color: #a7a8ab;
-  font-size: 25rpx;
+  font-size: 26rpx;
 }
 
 .quick-grid {
   display: grid;
-  margin-top: 25rpx;
+  margin-top: 27rpx;
   grid-template-columns: repeat(3, 1fr);
   gap: 18rpx;
 }
@@ -311,8 +259,8 @@ onPullDownRefresh(() => {
 .quick-card {
   display: flex;
   min-width: 0;
-  height: 212rpx;
-  padding: 19rpx 6rpx 15rpx;
+  height: 232rpx;
+  padding: 18rpx 6rpx 16rpx;
   flex-direction: column;
   align-items: center;
   border-radius: 30rpx;
@@ -323,14 +271,14 @@ onPullDownRefresh(() => {
 }
 
 .quick-card__image {
-  width: 88rpx;
-  height: 88rpx;
+  width: 104rpx;
+  height: 104rpx;
 }
 
 .quick-card__name {
-  margin-top: 5rpx;
+  margin-top: 3rpx;
   color: #1f1b18;
-  font-size: 28rpx;
+  font-size: 29rpx;
   font-weight: 750;
   line-height: 1.25;
 }
@@ -338,15 +286,15 @@ onPullDownRefresh(() => {
 .quick-card__desc {
   margin-top: 5rpx;
   color: #8d8883;
-  font-size: 21rpx;
+  font-size: 22rpx;
   line-height: 1.2;
 }
 
 .blind-box {
   display: flex;
   width: 100%;
-  height: 106rpx;
-  margin-top: 23rpx;
+  height: 116rpx;
+  margin-top: 25rpx;
   padding: 0 20rpx 0 22rpx;
   align-items: center;
   border: 1rpx solid rgba(235, 187, 133, 0.2);
@@ -358,8 +306,8 @@ onPullDownRefresh(() => {
 
 .blind-box__icon-wrap {
   display: flex;
-  width: 67rpx;
-  height: 67rpx;
+  width: 70rpx;
+  height: 70rpx;
   align-items: center;
   justify-content: center;
   border-radius: 19rpx;
@@ -367,8 +315,8 @@ onPullDownRefresh(() => {
 }
 
 .blind-box__icon {
-  width: 55rpx;
-  height: 55rpx;
+  width: 63rpx;
+  height: 63rpx;
 }
 
 .blind-box__copy {
@@ -381,14 +329,14 @@ onPullDownRefresh(() => {
 
 .blind-box__title {
   color: #1f1b18;
-  font-size: 28rpx;
+  font-size: 29rpx;
   font-weight: 750;
 }
 
 .blind-box__subtitle {
   margin-top: 5rpx;
   color: #908a85;
-  font-size: 21rpx;
+  font-size: 22rpx;
 }
 
 .blind-box__go {
@@ -406,8 +354,8 @@ onPullDownRefresh(() => {
 }
 
 .status-card {
-  margin-top: 23rpx;
-  padding: 21rpx 26rpx 20rpx;
+  margin-top: 25rpx;
+  padding: 23rpx 26rpx 22rpx;
   border: 1rpx solid rgba(95, 66, 43, 0.025);
   border-radius: 28rpx;
   background: rgba(255, 255, 255, 0.95);
@@ -422,35 +370,21 @@ onPullDownRefresh(() => {
 
 .section-title {
   color: #201b18;
-  font-size: 29rpx;
+  font-size: 30rpx;
   font-weight: 750;
 }
 
 .edit {
   display: flex;
-  width: 40rpx;
-  height: 35rpx;
+  width: 44rpx;
+  height: 42rpx;
   align-items: center;
   justify-content: center;
 }
 
-.edit__pencil {
-  position: relative;
-  width: 23rpx;
-  height: 8rpx;
-  border: 2rpx solid #85898d;
-  transform: rotate(-45deg);
-
-  &::after {
-    position: absolute;
-    top: -2rpx;
-    right: -8rpx;
-    width: 5rpx;
-    height: 8rpx;
-    border: 2rpx solid #85898d;
-    border-left: 0;
-    content: '';
-  }
+.edit__icon {
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .status-card__scroll {
@@ -465,14 +399,14 @@ onPullDownRefresh(() => {
 }
 
 .status-chip {
-  height: 52rpx;
-  padding: 0 23rpx;
+  height: 56rpx;
+  padding: 0 25rpx;
   color: #615d59;
   border: 2rpx solid transparent;
   border-radius: 29rpx;
   background: #f8f6f4;
-  font-size: 23rpx;
-  line-height: 48rpx;
+  font-size: 24rpx;
+  line-height: 52rpx;
 
   &--active {
     color: #f47a13;
@@ -484,7 +418,7 @@ onPullDownRefresh(() => {
 
 .recommend-heading {
   display: flex;
-  height: 67rpx;
+  height: 72rpx;
   padding: 2rpx 3rpx 0;
   align-items: center;
   justify-content: space-between;
@@ -507,7 +441,7 @@ onPullDownRefresh(() => {
 .recipe-card {
   display: flex;
   width: 100%;
-  height: 184rpx;
+  height: 246rpx;
   overflow: hidden;
   align-items: stretch;
   border: 1rpx solid rgba(92, 62, 39, 0.025);
@@ -527,7 +461,7 @@ onPullDownRefresh(() => {
 .recipe-card__body {
   display: flex;
   min-width: 0;
-  padding: 17rpx 16rpx 14rpx 19rpx;
+  padding: 23rpx 18rpx 19rpx 21rpx;
   flex: 1;
   flex-direction: column;
 }
@@ -540,7 +474,7 @@ onPullDownRefresh(() => {
 
 .recipe-card__name {
   color: #181512;
-  font-size: 29rpx;
+  font-size: 30rpx;
   font-weight: 780;
   white-space: nowrap;
 }
@@ -556,10 +490,10 @@ onPullDownRefresh(() => {
 }
 
 .recipe-card__reason {
-  margin-top: 7rpx;
+  margin-top: 11rpx;
   overflow: hidden;
   color: #817a74;
-  font-size: 20rpx;
+  font-size: 21rpx;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -567,7 +501,7 @@ onPullDownRefresh(() => {
 
 .recipe-card__tags {
   display: flex;
-  margin-top: 10rpx;
+  margin-top: 15rpx;
   gap: 9rpx;
 }
 
@@ -585,7 +519,7 @@ onPullDownRefresh(() => {
   align-items: center;
   gap: 22rpx;
   color: #85817c;
-  font-size: 19rpx;
+  font-size: 20rpx;
 }
 
 .meta-item {
@@ -618,15 +552,39 @@ onPullDownRefresh(() => {
   &::after { height: 5rpx; transform: rotate(120deg); }
 }
 
-.person {
-  margin-right: 5rpx;
-  color: #96999c;
-  font-size: 22rpx;
+.person-icon {
+  position: relative;
+  width: 20rpx;
+  height: 20rpx;
+  margin-right: 7rpx;
+
+  &::before {
+    position: absolute;
+    top: 0;
+    left: 7rpx;
+    width: 6rpx;
+    height: 6rpx;
+    border: 2rpx solid #96999c;
+    border-radius: 50%;
+    content: '';
+  }
+
+  &::after {
+    position: absolute;
+    bottom: 0;
+    left: 3rpx;
+    width: 14rpx;
+    height: 8rpx;
+    border: 2rpx solid #96999c;
+    border-top-left-radius: 9rpx;
+    border-top-right-radius: 9rpx;
+    border-bottom: 0;
+    content: '';
+  }
 }
 
 /* #ifdef MP-WEIXIN */
 .notice { margin-right: 178rpx; }
-.home { padding-bottom: 32rpx; }
 /* #endif */
 
 @media (min-width: 500px) {

@@ -1,13 +1,13 @@
 import type { CategoryItem, Recipe, StatusOption } from '@/types/recipe'
 
-const yamSoupImage = '/static/images/recipes/yam-pork-rib-soup-card.webp'
+const yamSoupImage = '/static/images/recipes/yam-pork-rib-soup-card.jpg'
 
 export const todayRecipe: Recipe = {
   id: 1001,
   name: '山药排骨汤',
   cover: yamSoupImage,
-  hero: '/static/images/recipes/yam-pork-rib-soup-hero.webp',
-  thumbnail: '/static/images/recipes/yam-pork-rib-soup-thumb.webp',
+  hero: '/static/images/recipes/yam-pork-rib-soup-hero.jpg',
+  thumbnail: '/static/images/recipes/yam-pork-rib-soup-thumb.jpg',
   category: '汤羹',
   tags: ['高钙', '低脂', '易消化'],
   reason: '富含钙与胶原蛋白，温润清淡，适合恢复期补充营养。',

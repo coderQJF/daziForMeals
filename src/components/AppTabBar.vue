@@ -26,7 +26,6 @@ function switchTab(index: number, path: string) {
       :class="{ 'app-tabbar__item--active': selected === index }"
       @click="switchTab(index, item.path)"
     >
-      <view class="app-tabbar__active-bg" />
       <image
         class="app-tabbar__icon"
         :src="selected === index ? item.activeIcon : item.icon"
@@ -41,59 +40,54 @@ function switchTab(index: number, path: string) {
 .app-tabbar {
   position: fixed;
   z-index: 9999;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  right: 16rpx;
+  bottom: calc(env(safe-area-inset-bottom) + 10rpx);
+  left: 16rpx;
   display: flex;
-  height: 108rpx;
-  padding: 9rpx 18rpx calc(env(safe-area-inset-bottom) + 8rpx);
+  height: 112rpx;
+  padding: 12rpx 8rpx 10rpx;
   align-items: flex-start;
   border-top: 1rpx solid rgba(91, 67, 49, 0.05);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 -10rpx 34rpx rgba(75, 47, 27, 0.055);
+  border-radius: 32rpx;
+  background: #fff;
+  box-shadow: 0 -9rpx 30rpx rgba(75, 47, 27, 0.052);
   box-sizing: content-box;
 }
 
 .app-tabbar__item {
   position: relative;
   display: flex;
-  height: 94rpx;
-  flex: 1;
+  width: 20%;
+  min-width: 0;
+  height: 108rpx;
+  flex: 0 0 20%;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #999;
-}
-
-.app-tabbar__active-bg {
-  position: absolute;
-  top: 2rpx;
-  left: 50%;
-  width: 74rpx;
-  height: 58rpx;
-  border-radius: 25rpx;
-  transform: translateX(-50%);
+  color: #9da1aa;
+  box-sizing: border-box;
 }
 
 .app-tabbar__item--active {
-  color: #ff7a1a;
+  color: #ff6800;
 
-  .app-tabbar__active-bg { background: #fff6ed; }
   .app-tabbar__text { font-weight: 700; }
 }
 
 .app-tabbar__icon {
   position: relative;
   z-index: 1;
-  width: 43rpx;
-  height: 43rpx;
+  display: block;
+  width: 56rpx;
+  height: 56rpx;
 }
 
 .app-tabbar__text {
   position: relative;
   z-index: 1;
-  margin-top: 4rpx;
-  font-size: 20rpx;
-  line-height: 25rpx;
+  margin-top: 5rpx;
+  font-size: 24rpx;
+  line-height: 30rpx;
+  white-space: nowrap;
 }
 </style>
