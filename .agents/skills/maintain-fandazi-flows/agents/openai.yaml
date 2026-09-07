@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fandazi Flow Maintainer"
+  short_description: "Maintain routes, interactions, and shared app state"
+  default_prompt: "Use $maintain-fandazi-flows to update this navigation or state flow."
+policy:
+  allow_implicit_invocation: true

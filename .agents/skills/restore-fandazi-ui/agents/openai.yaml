@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fandazi UI Restorer"
+  short_description: "Restore and review Fandazi miniapp pages from design references"
+  default_prompt: "Use $restore-fandazi-ui to restore this Fandazi page from the supplied design."
+policy:
+  allow_implicit_invocation: true

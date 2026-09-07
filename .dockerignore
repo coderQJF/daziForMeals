@@ -1,0 +1,10 @@
+.git
+.agents
+.scaffold-uni
+frontend
+node_modules
+tmp
+**/dist
+**/node_modules
+**/.env
+*.log

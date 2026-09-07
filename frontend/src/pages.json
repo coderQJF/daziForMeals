@@ -1,0 +1,136 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/category/category",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/plan/plan",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/plan/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/favorite/favorite",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/user/user",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/recipe/list",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/recommend/recommend",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/recipe/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/takeout/takeout",
+      "style": {
+        "navigationBarTitleText": "今天点什么",
+        "navigationBarBackgroundColor": "#FFF7ED",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/login/login",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/status/status",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "饭搭子",
+    "navigationBarBackgroundColor": "#FFF7ED",
+    "backgroundColor": "#FFF7ED"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#9DA1AA",
+    "selectedColor": "#FF900B",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "static/tabbar/home.png",
+        "selectedIconPath": "static/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/category/category",
+        "text": "分类",
+        "iconPath": "static/tabbar/category.png",
+        "selectedIconPath": "static/tabbar/category-active.png"
+      },
+      {
+        "pagePath": "pages/plan/plan",
+        "text": "计划",
+        "iconPath": "static/tabbar/plan.png",
+        "selectedIconPath": "static/tabbar/plan-active.png"
+      },
+      {
+        "pagePath": "pages/favorite/favorite",
+        "text": "收藏",
+        "iconPath": "static/tabbar/favorite.png",
+        "selectedIconPath": "static/tabbar/favorite-active.png"
+      },
+      {
+        "pagePath": "pages/user/user",
+        "text": "我的",
+        "iconPath": "static/tabbar/user.png",
+        "selectedIconPath": "static/tabbar/user-active.png"
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@fandazi/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "type-check": "tsc --noEmit",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "tsx --test src/app.test.ts",
+    "verify": "pnpm run type-check && pnpm run test && pnpm run build"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "fastify": "^5.12.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fandazi Miniapp Verifier"
+  short_description: "Run the complete WeChat miniapp delivery quality gate"
+  default_prompt: "Use $verify-fandazi-miniapp to run the complete pre-delivery quality gate."
+policy:
+  allow_implicit_invocation: true

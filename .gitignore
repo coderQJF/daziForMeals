@@ -5,4 +5,9 @@ dist/
 *.log
 .scaffold-uni/
 tmp/
-ui/material/
+frontend/ui/material/
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+!backend/.env.example

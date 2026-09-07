@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fandazi Asset Organizer"
+  short_description: "Organize and validate miniapp image and icon assets"
+  default_prompt: "Use $organize-fandazi-assets to ingest new frontend/ui/material assets safely."
+policy:
+  allow_implicit_invocation: true
