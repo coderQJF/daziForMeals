@@ -33,6 +33,7 @@ test('GET /api/v1/bootstrap returns API-backed home content', async () => {
 
   assert.equal(response.statusCode, 200)
   assert.equal(payload.data.recommendation.id, 1001)
+  assert.match(payload.data.recommendation.cover, /^https:\/\/img\.coder-f-nowork\.cn\/static\/images\//)
   assert.ok(payload.data.cookingCategories.length > 0)
   assert.ok(payload.data.statusOptions.length > 0)
   await app.close()

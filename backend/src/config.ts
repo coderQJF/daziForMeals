@@ -26,7 +26,7 @@ export const serverConfig = {
   corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS),
   isProduction: process.env.NODE_ENV === 'production',
   databaseUrl: process.env.DATABASE_URL?.trim(),
-  assetBaseUrl: process.env.ASSET_BASE_URL?.trim() || 'https://img.coder-f-nowork.cn',
+  assetBaseUrl: process.env.ASSET_BASE_URL?.trim() || 'https://img.coder-f-nowork.cn/static',
   wechatAppId: process.env.WECHAT_APP_ID?.trim(),
   wechatAppSecret: process.env.WECHAT_APP_SECRET?.trim(),
   sessionSecret: process.env.SESSION_SECRET?.trim(),
