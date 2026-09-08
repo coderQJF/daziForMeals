@@ -39,5 +39,5 @@ pnpm verify
 - 图片资源：`https://img.coder-f-nowork.cn`
 - 后端：Node.js、TypeScript、Fastify，位于 `backend/`
 - 后端 Docker 部署入口：根目录 `pnpm deploy:backend`
-- 后端域名：`https://api.coder-f-nowork.cn`
+- 后端域名：`https://fandazi-api.coder-f-nowork.cn`
 - 前端通过 `VITE_API_BASE_URL` 切换 API 环境

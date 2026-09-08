@@ -29,8 +29,8 @@ pnpm build:backend
 首次部署时：
 
 1. 将 `.env.example` 复制为 `.env`，按生产环境修改。
-2. 将 `deploy/nginx-api.conf.example` 安装为 Nginx 站点配置。
-3. 为 `api.coder-f-nowork.cn` 配置 HTTPS 证书。
+2. 将 `deploy/nginx-api.conf.example` 安装为 Nginx 站点配置；生产环境示例将宿主机 `3100` 端口反向代理到 API。
+3. 为 `fandazi-api.coder-f-nowork.cn` 配置 HTTPS 证书。
 4. 在仓库根目录执行 `pnpm deploy:backend`。
 
 常用运维命令：

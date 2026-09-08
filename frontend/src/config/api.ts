@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = 'https://api.coder-f-nowork.cn/api/v1'
+const DEFAULT_API_BASE_URL = 'https://fandazi-api.coder-f-nowork.cn/api/v1'
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
 
