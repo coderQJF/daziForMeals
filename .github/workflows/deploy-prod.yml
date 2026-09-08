@@ -78,7 +78,7 @@ jobs:
                 pnpm config set store-dir /pnpm/store
                 pnpm install --filter dazi-for-meals... --frozen-lockfile
                 pnpm build:frontend
-                pnpm --dir frontend upload:mp-weixin -- \
+                pnpm --dir frontend upload:mp-weixin \
                   --pkp /run/secrets/wechat-upload.key \
                   --uv "$MINIAPP_VERSION" \
                   --ud "$MINIAPP_DESCRIPTION" \
