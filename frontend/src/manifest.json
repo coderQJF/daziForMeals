@@ -23,8 +23,8 @@
     }
   },
   "mp-weixin": {
-    "appid": "",
-    "setting": { "urlCheck": false },
+    "appid": "wx7fce988b19eee10d",
+    "setting": { "urlCheck": true },
     "usingComponents": true
   },
   "uniStatistics": { "enable": false },
