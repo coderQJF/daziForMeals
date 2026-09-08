@@ -49,3 +49,13 @@ curl https://fandazi-api.coder-f-nowork.cn/api/v1/bootstrap
 ```
 
 Compose 默认只将 API 映射到服务器回环地址 `127.0.0.1:3100`，由 Nginx 对公网提供 HTTPS，不直接暴露容器端口。
+
+## 自动部署
+
+推送到 `main` 后，`.github/workflows/deploy-prod.yml` 会通过 SSH 登录 ECS，在 `/opt/fandazi` 拉取最新提交并执行 Docker Compose 部署。Action 不重复运行项目类型检查和测试，只使用 Compose 健康检查与线上接口检查确认部署结果。
+
+仓库需要配置以下 GitHub Actions Secrets：
+
+- `ECS_HOST`：ECS 公网 IP 或可访问主机名。
+- `ECS_USER`：SSH 用户，当前服务器使用 `root`。
+- `ECS_SSH_KEY`：能够登录上述用户的专用 SSH 私钥全文。

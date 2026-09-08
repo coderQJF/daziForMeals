@@ -1,0 +1,65 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fandazi-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Prepare SSH
+        env:
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+        run: |
+          test -n "$ECS_SSH_KEY"
+          test -n "$ECS_HOST"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ECS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$ECS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy backend to ECS
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+        run: |
+          test -n "$ECS_USER"
+          ssh \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=20 \
+            -o TCPKeepAlive=yes \
+            "$ECS_USER@$ECS_HOST" <<'EOF'
+            set -Eeuo pipefail
+            cd /opt/fandazi
+
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+
+            docker compose \
+              --env-file backend/.env \
+              -f backend/compose.yaml \
+              up -d --build --wait --wait-timeout 60
+
+            docker compose \
+              --env-file backend/.env \
+              -f backend/compose.yaml \
+              ps
+
+            curl -fsS http://127.0.0.1:3100/health
+            curl -fsS https://fandazi-api.coder-f-nowork.cn/api/v1/bootstrap >/dev/null
+            echo "Fandazi production deployment succeeded"
+          EOF
