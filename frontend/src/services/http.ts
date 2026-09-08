@@ -28,6 +28,13 @@ function getClientId(): string {
   return created
 }
 
+function getRequestHeaders(): Record<string, string> {
+  const token = uni.getStorageSync(AUTH_TOKEN_STORAGE_KEY)
+  const header: Record<string, string> = { 'x-client-id': getClientId() }
+  if (typeof token === 'string' && token) header.Authorization = `Bearer ${token}`
+  return header
+}
+
 export function setAuthToken(token: string): void {
   uni.setStorageSync(AUTH_TOKEN_STORAGE_KEY, token)
   uni.removeStorageSync('isLoggedIn')
@@ -45,13 +52,11 @@ export function hasAuthToken(): boolean {
 export function apiRequest<T>(method: 'GET' | 'POST' | 'PUT', path: string, data?: Record<string, unknown>): Promise<T> {
   return new Promise((resolve, reject) => {
     const token = uni.getStorageSync(AUTH_TOKEN_STORAGE_KEY)
-    const header: Record<string, string> = { 'x-client-id': getClientId() }
-    if (typeof token === 'string' && token) header.Authorization = `Bearer ${token}`
     uni.request({
       url: `${API_BASE_URL}${path}`,
       method,
       data,
-      header,
+      header: getRequestHeaders(),
       timeout: 10000,
       success(response: UniApp.RequestSuccessCallbackResult) {
         if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -64,6 +69,36 @@ export function apiRequest<T>(method: 'GET' | 'POST' | 'PUT', path: string, data
       },
       fail(error: UniApp.GeneralCallbackResult) {
         reject(new ApiError(error.errMsg || '网络连接失败'))
+      },
+    })
+  })
+}
+
+export function apiUpload<T>(path: string, filePath: string, name = 'file'): Promise<T> {
+  return new Promise((resolve, reject) => {
+    uni.uploadFile({
+      url: `${API_BASE_URL}${path}`,
+      filePath,
+      name,
+      header: getRequestHeaders(),
+      timeout: 15000,
+      success(response) {
+        let payload: (ApiEnvelope<T> & ApiErrorEnvelope) | undefined
+        try {
+          payload = JSON.parse(response.data) as ApiEnvelope<T> & ApiErrorEnvelope
+        } catch {
+          reject(new ApiError('头像上传响应格式无效', response.statusCode))
+          return
+        }
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          resolve(payload.data)
+          return
+        }
+        if (response.statusCode === 401) clearAuthToken()
+        reject(new ApiError(payload.error?.message || '头像上传失败', response.statusCode))
+      },
+      fail(error) {
+        reject(new ApiError(error.errMsg || '头像上传失败'))
       },
     })
   })

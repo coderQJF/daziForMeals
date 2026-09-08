@@ -8,15 +8,17 @@ const props = withDefaults(defineProps<{
   actionLabel?: string
   actionBackground?: string
   pagePadding?: number
+  showBack?: boolean
 }>(), {
   subtitle: '',
   actionIcon: '',
   actionLabel: '页面操作',
   actionBackground: 'transparent',
   pagePadding: 32,
+  showBack: false,
 })
 
-const emit = defineEmits<{ action: [] }>()
+const emit = defineEmits<{ action: []; back: [] }>()
 const capsuleStyle = ref<Record<string, string>>({})
 const actionStyle = computed(() => ({ background: props.actionBackground }))
 
@@ -40,6 +42,7 @@ onMounted(() => {
 <template>
   <view class="app-header" :style="capsuleStyle">
     <view class="app-header__row">
+      <button v-if="showBack" class="app-header__back" aria-label="返回" @click="emit('back')">‹</button>
       <view class="app-header__copy">
         <text class="app-header__title">{{ title }}</text>
         <slot name="subtitle">
@@ -83,6 +86,19 @@ onMounted(() => {
   min-width: 0;
   flex: 1;
   flex-direction: column;
+}
+
+.app-header__back {
+  display: flex;
+  width: 64rpx;
+  height: 64rpx;
+  margin-right: 12rpx;
+  flex: 0 0 64rpx;
+  align-items: center;
+  justify-content: center;
+  color: $color-text;
+  font-size: 54rpx;
+  line-height: 1;
 }
 
 .app-header__title {

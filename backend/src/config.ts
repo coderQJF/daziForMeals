@@ -27,6 +27,8 @@ export const serverConfig = {
   isProduction: process.env.NODE_ENV === 'production',
   databaseUrl: process.env.DATABASE_URL?.trim(),
   assetBaseUrl: process.env.ASSET_BASE_URL?.trim() || 'https://img.coder-f-nowork.cn/static',
+  avatarStorageDir: process.env.AVATAR_STORAGE_DIR?.trim() || '/data/avatars',
+  publicApiBaseUrl: process.env.PUBLIC_API_BASE_URL?.trim() || 'http://127.0.0.1:3000',
   wechatAppId: process.env.WECHAT_APP_ID?.trim(),
   wechatAppSecret: process.env.WECHAT_APP_SECRET?.trim(),
   sessionSecret: process.env.SESSION_SECRET?.trim(),

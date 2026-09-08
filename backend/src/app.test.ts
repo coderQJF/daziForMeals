@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { buildApp } from './app.js'
+
+function concatBytes(...parts: Uint8Array<ArrayBuffer>[]): Uint8Array<ArrayBuffer> {
+  const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0))
+  let offset = 0
+  for (const part of parts) {
+    result.set(part, offset)
+    offset += part.length
+  }
+  return result
+}
 
 test('GET /health returns the service status', async () => {
   const app = buildApp({ logger: false })
@@ -150,4 +163,62 @@ test('WeChat login reports missing server configuration', async () => {
   assert.equal(response.statusCode, 503)
   assert.equal(response.json().error.code, 'WECHAT_LOGIN_NOT_CONFIGURED')
   await app.close()
+})
+
+test('authenticated users can upload and retrieve a persistent avatar', async () => {
+  const avatarStorageDir = await mkdtemp(join(tmpdir(), 'fandazi-avatar-test-'))
+  const app = buildApp({
+    logger: false,
+    avatarStorageDir,
+    publicApiBaseUrl: 'https://api.example.test',
+    sessionSecret: 'test-session-secret-with-at-least-32-characters',
+    wechatCodeExchange: async () => ({ openid: 'avatar-test-user' }),
+  })
+
+  try {
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/wechat',
+      headers: { 'x-client-id': 'avatar-device-001' },
+      payload: { code: 'avatar-code' },
+    })
+    const token = login.json().data.token as string
+    const boundary = 'fandazi-avatar-boundary'
+    const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00])
+    const payload = concatBytes(
+      new TextEncoder().encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="avatar.png"\r\nContent-Type: image/png\r\n\r\n`),
+      image,
+      new TextEncoder().encode(`\r\n--${boundary}--\r\n`),
+    )
+    const upload = await app.inject({
+      method: 'POST',
+      url: '/api/v1/me/avatar',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: Buffer.from(payload) as unknown as string,
+    })
+
+    assert.equal(upload.statusCode, 200, upload.body)
+    const avatarUrl = upload.json().data.profile.avatar as string
+    assert.match(avatarUrl, /^https:\/\/api\.example\.test\/api\/v1\/avatars\/[a-f0-9]{64}\.png$/)
+
+    const avatarPath = new URL(avatarUrl).pathname
+    const downloaded = await app.inject({ method: 'GET', url: avatarPath })
+    assert.equal(downloaded.statusCode, 200)
+    assert.equal(downloaded.headers['content-type'], 'image/png')
+    assert.deepEqual([...downloaded.rawPayload], [...image])
+
+    const unauthenticated = await app.inject({
+      method: 'POST',
+      url: '/api/v1/me/avatar',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: Buffer.from(payload) as unknown as string,
+    })
+    assert.equal(unauthenticated.statusCode, 401)
+  } finally {
+    await app.close()
+    await rm(avatarStorageDir, { recursive: true, force: true })
+  }
 })

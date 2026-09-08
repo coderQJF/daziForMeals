@@ -55,7 +55,10 @@ async function login() {
     <text class="title">欢迎来到饭搭子</text>
     <text class="subtitle">今天吃什么？饭搭子帮你决定</text>
     <button class="login-button" :loading="loggingIn" :disabled="loggingIn" @click="login">
-      <text class="wechat">●</text>
+      <view class="wechat" aria-hidden="true">
+        <view class="wechat__bubble wechat__bubble--large"><view class="wechat__dot wechat__dot--left" /><view class="wechat__dot wechat__dot--right" /></view>
+        <view class="wechat__bubble wechat__bubble--small"><view class="wechat__dot wechat__dot--left" /><view class="wechat__dot wechat__dot--right" /></view>
+      </view>
       <text>{{ loggingIn ? '正在登录…' : '微信一键登录' }}</text>
     </button>
     <button v-if="errorMessage" class="error-message" @click="login">{{ errorMessage }}，点击重试</button>
@@ -73,7 +76,16 @@ async function login() {
 .subtitle { position: relative; margin-top: 18rpx; color: $color-text-secondary; font-size: 26rpx; }
 .login-button { display: flex; width: 100%; height: 94rpx; margin-top: 170rpx; align-items: center; justify-content: center; color: #fff; border-radius: 999rpx; background: $color-success; box-shadow: 0 12rpx 28rpx rgba(84, 130, 62, .18); font-size: 29rpx; font-weight: 700; }
 .login-button[disabled] { opacity: .72; }
-.wechat { margin-right: 14rpx; font-size: 26rpx; }
+.wechat { position: relative; width: 46rpx; height: 38rpx; margin-right: 14rpx; flex: 0 0 46rpx; }
+.wechat__bubble { position: absolute; border-radius: 50%; background: #fff; }
+.wechat__bubble::after { position: absolute; bottom: -3rpx; width: 8rpx; height: 8rpx; background: #fff; content: ''; transform: rotate(34deg); }
+.wechat__dot { position: absolute; top: 46%; width: 4rpx; height: 4rpx; border-radius: 50%; background: $color-success; transform: translateY(-50%); }
+.wechat__dot--left { left: 30%; }
+.wechat__dot--right { right: 30%; }
+.wechat__bubble--large { top: 1rpx; left: 0; width: 31rpx; height: 25rpx; }
+.wechat__bubble--large::after { left: 5rpx; }
+.wechat__bubble--small { right: 0; bottom: 0; width: 27rpx; height: 22rpx; border: 2rpx solid $color-success; }
+.wechat__bubble--small::after { right: 4rpx; border-right: 2rpx solid $color-success; border-bottom: 2rpx solid $color-success; }
 .error-message { margin-top: 22rpx; color: #d85a47; font-size: 24rpx; text-align: center; }
 .agreement { margin-top: 28rpx; color: $color-text-muted; font-size: 24rpx; text-align: center; }
 </style>

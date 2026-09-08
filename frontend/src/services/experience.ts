@@ -1,4 +1,4 @@
-import { apiGet, apiRequest } from './http'
+import { apiGet, apiRequest, apiUpload } from './http'
 import type { PlanPayload, TakeoutShop, UserDashboard, UserStateUpdate } from '@/types/experience'
 
 export const experienceApi = {
@@ -7,6 +7,9 @@ export const experienceApi = {
   },
   updateUser(update: UserStateUpdate) {
     return apiRequest<UserDashboard>('PUT', '/me', update)
+  },
+  uploadAvatar(filePath: string) {
+    return apiUpload<UserDashboard>('/me/avatar', filePath)
   },
   getPlan(date: string) {
     return apiGet<PlanPayload>('/plan', { date })

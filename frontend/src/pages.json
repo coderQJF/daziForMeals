@@ -81,6 +81,13 @@
       }
     },
     {
+      "path": "pages/profile/profile",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
       "path": "pages/status/status",
       "style": {
         "navigationStyle": "custom",

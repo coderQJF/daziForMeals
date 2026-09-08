@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onShow } from '@dcloudio/uni-app'
+import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import AppTabBar from '@/components/AppTabBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useTabBarSelection } from '@/composables/useTabBarSelection'
 import { useRecipeStore } from '@/stores/recipe'
+import { hasAuthToken } from '@/services/http'
 
 interface MenuItem {
   id: 'taste' | 'kitchen' | 'records' | 'couple' | 'settings'
@@ -29,6 +31,7 @@ const settingsItem: MenuItem = {
 
 const recipeStore = useRecipeStore()
 const { profile, userStats, userLoading, userErrorMessage } = storeToRefs(recipeStore)
+const avatarLoadFailed = ref(false)
 
 useTabBarSelection(4)
 
@@ -37,7 +40,7 @@ function showNotice() {
 }
 
 function editProfile() {
-  uni.navigateTo({ url: '/pages/login/login' })
+  uni.navigateTo({ url: hasAuthToken() ? '/pages/profile/profile' : '/pages/login/login' })
 }
 
 function openFavorite() {
@@ -61,7 +64,10 @@ function handleMenu(item: MenuItem) {
   uni.showToast({ title: messages[item.id], icon: 'none' })
 }
 
-onShow(() => void recipeStore.loadUserState(true))
+onShow(() => {
+  avatarLoadFailed.value = false
+  void recipeStore.loadUserState(true)
+})
 </script>
 
 <template>
@@ -74,7 +80,16 @@ onShow(() => void recipeStore.loadUserState(true))
     <view v-else-if="userLoading" class="api-state">正在同步个人数据…</view>
 
     <button class="profile-card" @click="editProfile">
-      <image class="profile-card__avatar" :src="profile.avatar" mode="aspectFit" />
+      <view class="profile-card__avatar-wrap">
+        <image
+          v-if="profile.avatar && !avatarLoadFailed"
+          class="profile-card__avatar"
+          :src="profile.avatar"
+          mode="aspectFill"
+          @error="avatarLoadFailed = true"
+        />
+        <image v-else class="profile-card__avatar-fallback" src="/static/tabbar/user-active.png" mode="aspectFit" />
+      </view>
       <view class="profile-card__copy">
         <text class="profile-card__nickname">{{ profile.nickname }}</text>
         <text class="profile-card__bio">{{ profile.bio }}</text>
@@ -84,17 +99,17 @@ onShow(() => void recipeStore.loadUserState(true))
 
     <view class="stats-card">
       <button class="stat-item" @click="openFavorite">
-        <text class="stat-item__symbol stat-item__symbol--star">★</text>
+        <view class="stat-item__icon stat-item__icon--favorite">★</view>
         <text class="stat-item__number">{{ userStats.favorites }}</text>
         <text class="stat-item__label">收藏</text>
       </button>
       <button class="stat-item" @click="openFavorite">
-        <text class="stat-item__symbol stat-item__symbol--heart">♥</text>
+        <view class="stat-item__icon stat-item__icon--like">♥</view>
         <text class="stat-item__number">{{ userStats.likes }}</text>
         <text class="stat-item__label">喜欢</text>
       </button>
       <button class="stat-item" @click="openFavorite">
-        <view class="stat-item__done">✓</view>
+        <view class="stat-item__icon stat-item__icon--done">✓</view>
         <text class="stat-item__number">{{ userStats.cooked }}</text>
         <text class="stat-item__label">做过</text>
       </button>
@@ -230,10 +245,28 @@ onShow(() => void recipeStore.loadUserState(true))
   text-align: left;
 }
 
-.profile-card__avatar {
+.profile-card__avatar-wrap {
+  display: flex;
   width: 116rpx;
   height: 116rpx;
   flex: 0 0 116rpx;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  border: 4rpx solid #fff3e3;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #fff6e9, #ffe4c1);
+  box-shadow: 0 8rpx 20rpx rgba(209, 126, 37, .13);
+}
+
+.profile-card__avatar {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-card__avatar-fallback {
+  width: 56rpx;
+  height: 56rpx;
 }
 
 .profile-card__copy {
@@ -297,36 +330,35 @@ onShow(() => void recipeStore.loadUserState(true))
   content: '';
 }
 
-.stat-item__symbol {
-  height: 46rpx;
-  font-size: 43rpx;
-  line-height: 46rpx;
-}
-
-.stat-item__symbol--star {
-  color: #ffac24;
-}
-
-.stat-item__symbol--heart {
-  color: #ff655b;
-}
-
-.stat-item__done {
+.stat-item__icon {
   display: flex;
-  width: 39rpx;
-  height: 39rpx;
-  margin: 3rpx 0 4rpx;
+  width: 52rpx;
+  height: 52rpx;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #78bc45;
-  color: #fff;
-  font-size: 25rpx;
+  font-size: 29rpx;
   font-weight: 800;
+  line-height: 1;
+}
+
+.stat-item__icon--favorite {
+  background: #fff5dc;
+  color: #f4a51f;
+}
+
+.stat-item__icon--like {
+  background: #fff0f0;
+  color: #f36868;
+}
+
+.stat-item__icon--done {
+  background: #eff8e8;
+  color: #69ad42;
 }
 
 .stat-item__number {
-  margin-top: 7rpx;
+  margin-top: 9rpx;
   color: #302722;
   font-size: 31rpx;
   font-weight: 750;

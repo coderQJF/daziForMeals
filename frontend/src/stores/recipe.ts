@@ -96,6 +96,21 @@ export const useRecipeStore = defineStore('recipe', () => {
     }
   }
 
+  async function updateProfile(nextProfile: UserProfile) {
+    const state = await experienceApi.updateUser({ profile: nextProfile })
+    applyUserState(state)
+    userLoaded.value = true
+    userErrorMessage.value = ''
+    return state.profile
+  }
+
+  function applyUploadedAvatar(state: Awaited<ReturnType<typeof experienceApi.uploadAvatar>>) {
+    applyUserState(state)
+    userLoaded.value = true
+    userErrorMessage.value = ''
+    return state.profile.avatar
+  }
+
   function withLocalState<T extends Recipe>(recipe: T): T {
     return { ...recipe, isFavorite: favoriteIds.value.includes(recipe.id) }
   }
@@ -251,6 +266,8 @@ export const useRecipeStore = defineStore('recipe', () => {
     loadRecipes,
     loadRecipe,
     loadUserState,
+    updateProfile,
+    applyUploadedAvatar,
     selectStatus,
     toggleFavorite,
     isFavorite,

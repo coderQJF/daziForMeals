@@ -20,6 +20,7 @@ RUN pnpm install --filter @fandazi/backend... --prod --frozen-lockfile
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
 WORKDIR /workspace/backend
+RUN mkdir -p /data/avatars && chown node:node /data/avatars
 COPY --from=production-dependencies /workspace/node_modules /workspace/node_modules
 COPY --from=production-dependencies /workspace/backend/node_modules ./node_modules
 COPY --from=build /workspace/backend/dist ./dist

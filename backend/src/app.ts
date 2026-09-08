@@ -1,4 +1,8 @@
 import cors from '@fastify/cors'
+import multipart from '@fastify/multipart'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { createSessionToken, createWechatCodeExchange, createWechatSubject, verifySessionToken, WechatLoginError, type WechatCodeExchange } from './auth/wechat.js'
 import { serverConfig } from './config.js'
@@ -10,6 +14,8 @@ export interface BuildAppOptions {
   repository?: RecipeRepository
   sessionSecret?: string
   wechatCodeExchange?: WechatCodeExchange
+  avatarStorageDir?: string
+  publicApiBaseUrl?: string
 }
 
 class InvalidSessionError extends Error {}
@@ -28,6 +34,27 @@ function resolveClientId(headers: Record<string, unknown>, sessionSecret: string
   const subject = verifySessionToken(authorization.slice('Bearer '.length), sessionSecret)
   if (!subject) throw new InvalidSessionError()
   return subject
+}
+
+function resolveAuthenticatedClientId(headers: Record<string, unknown>, sessionSecret: string | undefined): string {
+  const authorization = headers.authorization
+  if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ') || !sessionSecret) {
+    throw new InvalidSessionError()
+  }
+  const subject = verifySessionToken(authorization.slice('Bearer '.length), sessionSecret)
+  if (!subject) throw new InvalidSessionError()
+  return subject
+}
+
+function detectAvatarType(buffer: Uint8Array<ArrayBuffer>): { extension: 'jpg' | 'png', contentType: string } | undefined {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { extension: 'jpg', contentType: 'image/jpeg' }
+  }
+  const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+  if (buffer.length >= 8 && pngSignature.every((byte, index) => buffer[index] === byte)) {
+    return { extension: 'png', contentType: 'image/png' }
+  }
+  return undefined
 }
 
 function toDashboard(state: UserState): UserDashboard {
@@ -87,6 +114,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       ? createWechatCodeExchange(serverConfig.wechatAppId, serverConfig.wechatAppSecret)
       : undefined
   )
+  const avatarStorageDir = options.avatarStorageDir ?? serverConfig.avatarStorageDir
+  const publicApiBaseUrl = (options.publicApiBaseUrl ?? serverConfig.publicApiBaseUrl).replace(/\/+$/, '')
   const app = Fastify({
     logger: options.logger ?? serverConfig.isProduction,
     trustProxy: true,
@@ -94,6 +123,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   void app.register(cors, {
     origin: serverConfig.corsOrigins,
+  })
+  void app.register(multipart, {
+    limits: { files: 1, fileSize: 2 * 1024 * 1024 },
   })
 
   app.setErrorHandler((error, request, reply) => {
@@ -187,6 +219,44 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     return { data: recipe }
   })
 
+  app.get('/api/v1/avatars/:filename', async (request, reply) => {
+    const { filename } = request.params as { filename: string }
+    if (!/^[a-f0-9]{64}\.(?:jpg|png)$/.test(filename)) {
+      return reply.code(404).send({ error: { code: 'AVATAR_NOT_FOUND', message: '头像不存在' } })
+    }
+    try {
+      const buffer = await readFile(join(avatarStorageDir, filename))
+      return reply.type(filename.endsWith('.png') ? 'image/png' : 'image/jpeg').send(buffer)
+    } catch {
+      return reply.code(404).send({ error: { code: 'AVATAR_NOT_FOUND', message: '头像不存在' } })
+    }
+  })
+
+  app.post('/api/v1/me/avatar', async (request, reply) => {
+    const clientId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const part = await request.file()
+    if (!part) {
+      return reply.code(400).send({ error: { code: 'AVATAR_REQUIRED', message: '请选择头像图片' } })
+    }
+    const buffer = new Uint8Array(await part.toBuffer())
+    const imageType = detectAvatarType(buffer)
+    if (!imageType) {
+      return reply.code(415).send({ error: { code: 'INVALID_AVATAR_TYPE', message: '头像仅支持 JPG 或 PNG 格式' } })
+    }
+    const filename = `${createHash('sha256').update(buffer).digest('hex')}.${imageType.extension}`
+    await mkdir(avatarStorageDir, { recursive: true })
+    await writeFile(join(avatarStorageDir, filename), buffer, { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EEXIST') throw error
+    })
+    const state = await repository.updateUserState(clientId, {
+      profile: {
+        ...(await repository.getUserState(clientId)).profile,
+        avatar: `${publicApiBaseUrl}/api/v1/avatars/${filename}`,
+      },
+    })
+    return { data: toDashboard(state) }
+  })
+
   app.get('/api/v1/me', async (request) => {
     const state = await repository.getUserState(resolveClientId(request.headers, sessionSecret))
     return { data: toDashboard(state) }
@@ -200,6 +270,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       )
       return { data: toDashboard(state) }
     } catch (error) {
+      if (error instanceof InvalidSessionError) throw error
       const message = error instanceof Error ? error.message : '用户数据格式无效'
       return reply.code(400).send({ error: { code: 'INVALID_USER_STATE', message } })
     }
