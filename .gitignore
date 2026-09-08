@@ -3,6 +3,7 @@ dist/
 .hbuilderx/
 .DS_Store
 *.log
+**/private.*.key
 .scaffold-uni/
 tmp/
 frontend/ui/material/
