@@ -1,73 +1,15 @@
 <script setup lang="ts">
 import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
-import { assetUrl } from '@/config/assets'
-import { recipeCatalog } from '@/mocks/recipe'
+import { computed, ref } from 'vue'
 import { useRecipeStore } from '@/stores/recipe'
 
 const store = useRecipeStore()
-const { recommendation } = storeToRefs(store)
-
-interface RecipeDetailPreset {
-  ingredients: Array<{ name: string; amount: string; icon: string }>
-  steps: Array<{ text: string; image: string }>
-}
-
-const detailPresets: Record<number, RecipeDetailPreset> = {
-  1001: {
-    ingredients: [
-      { name: '猪排骨', amount: '500g', icon: '🥩' },
-      { name: '山药', amount: '300g', icon: '🥔' },
-      { name: '红枣', amount: '5 颗', icon: '🔴' },
-      { name: '姜片', amount: '3 片', icon: '🫚' },
-      { name: '枸杞', amount: '1 小把', icon: '🫐' },
-      { name: '盐', amount: '适量', icon: '🧂' },
-      { name: '清水', amount: '适量', icon: '💧' },
-    ],
-    steps: [
-      { text: '排骨切块，冷水下锅焯水，去除血沫，捞出沥干。', image: assetUrl('images/category/cooking/home-style-cover.jpg') },
-      { text: '山药去皮切块，红枣洗净，姜切片备用。', image: assetUrl('images/plan/meals/tomato-beef-congee.jpg') },
-      { text: '锅中加清水，放入排骨和姜片炖煮，加入山药调味。', image: assetUrl('images/recipes/yam-pork-rib-soup-thumb.jpg') },
-    ],
-  },
-  1002: {
-    ingredients: [
-      { name: '牛肉', amount: '300g', icon: '🥩' },
-      { name: '番茄', amount: '2 个', icon: '🍅' },
-      { name: '洋葱', amount: '半个', icon: '🧅' },
-      { name: '姜片', amount: '3 片', icon: '🫚' },
-      { name: '盐', amount: '适量', icon: '🧂' },
-      { name: '食用油', amount: '适量', icon: '🫗' },
-      { name: '清水', amount: '适量', icon: '💧' },
-    ],
-    steps: [
-      { text: '牛肉切块，冷水下锅焯水，去除血沫后捞出。', image: assetUrl('images/category/cooking/home-style-cover.jpg') },
-      { text: '番茄切块，洋葱切丝，姜切片备用。', image: assetUrl('images/plan/meals/tomato-beef-congee.jpg') },
-      { text: '锅中热油炒香配料，加水炖煮至牛肉软烂。', image: assetUrl('images/category/cooking/home-style-cover.jpg') },
-    ],
-  },
-  1003: {
-    ingredients: [
-      { name: '鲜虾仁', amount: '250g', icon: '🦐' },
-      { name: '西兰花', amount: '300g', icon: '🥦' },
-      { name: '蒜瓣', amount: '2 瓣', icon: '🧄' },
-      { name: '料酒', amount: '1 勺', icon: '🥄' },
-      { name: '盐', amount: '适量', icon: '🧂' },
-      { name: '食用油', amount: '适量', icon: '🫗' },
-      { name: '清水', amount: '适量', icon: '💧' },
-    ],
-    steps: [
-      { text: '虾仁洗净，用少量料酒和盐腌制十分钟。', image: assetUrl('images/category/cooking/light-cover.jpg') },
-      { text: '西兰花切小朵焯水，蒜瓣切末备用。', image: assetUrl('images/category/cooking/light-cover.jpg') },
-      { text: '热锅少油炒香蒜末，放入虾仁和西兰花翻炒。', image: assetUrl('images/category/cooking/light-cover.jpg') },
-    ],
-  },
-}
-
-const activeDetail = computed(() => detailPresets[recommendation.value.id] ?? detailPresets[1001])
-const ingredients = computed(() => activeDetail.value.ingredients)
-const steps = computed(() => activeDetail.value.steps)
+const { recommendation, loading, errorMessage } = storeToRefs(store)
+const requestedRecipeId = ref(0)
+const isCurrentRecipe = computed(() => recommendation.value.id === requestedRecipeId.value)
+const ingredients = computed(() => recommendation.value.ingredients)
+const steps = computed(() => recommendation.value.steps)
 
 function goBack() {
   if (getCurrentPages().length > 1) {
@@ -82,10 +24,23 @@ function addPlan() {
   uni.showToast({ title: '已加入今天的计划', icon: 'success' })
 }
 
-onLoad((query) => {
+async function loadDetail() {
+  if (!requestedRecipeId.value) return
+  try {
+    await store.loadRecipe(requestedRecipeId.value)
+  } catch {
+    // Store exposes the error state in the page.
+  }
+}
+
+onLoad(async (query) => {
   const recipeId = Number(query?.id)
-  const recipe = recipeCatalog.find(item => item.id === recipeId)
-  if (recipe && recommendation.value.id !== recipe.id) store.selectRecommendation(recipe)
+  if (!Number.isInteger(recipeId) || recipeId < 1) {
+    errorMessage.value = '菜谱编号无效'
+    return
+  }
+  requestedRecipeId.value = recipeId
+  await loadDetail()
 })
 
 onShareAppMessage(() => ({
@@ -96,6 +51,9 @@ onShareAppMessage(() => ({
 
 <template>
   <view class="detail-page">
+    <view v-if="loading && !isCurrentRecipe" class="detail-state">正在加载菜谱详情…</view>
+    <button v-else-if="errorMessage && !isCurrentRecipe" class="detail-state detail-state--error" @click="loadDetail">{{ errorMessage }}，点击重试</button>
+    <template v-else-if="isCurrentRecipe">
     <view class="hero-panel">
       <image class="hero-panel__image" :src="recommendation.hero" mode="aspectFill" />
       <view class="hero-panel__shade" />
@@ -123,7 +81,7 @@ onShareAppMessage(() => ({
     <view class="detail-content">
       <view class="recipe-heading">
         <text class="recipe-heading__name">{{ recommendation.name }}</text>
-        <text class="recipe-heading__badge">骨骼恢复推荐</text>
+        <text class="recipe-heading__badge">{{ recommendation.tags[0] || recommendation.category }}</text>
       </view>
 
       <view class="recipe-meta">
@@ -132,7 +90,7 @@ onShareAppMessage(() => ({
         <view class="recipe-meta__item"><text class="meta-flame">♨</text>约 {{ recommendation.calories }} kcal</view>
       </view>
 
-      <text class="recipe-description">{{ recommendation.reason }}富含优质蛋白和钙，有助于增强体力，促进骨骼恢复。</text>
+      <text class="recipe-description">{{ recommendation.reason }}</text>
 
       <view class="section-heading">
         <text class="section-heading__title">食材清单</text>
@@ -172,6 +130,7 @@ onShareAppMessage(() => ({
         <text>加入计划</text>
       </button>
     </view>
+    </template>
   </view>
 </template>
 
@@ -182,6 +141,21 @@ onShareAppMessage(() => ({
   padding-bottom: calc(132rpx + env(safe-area-inset-bottom));
   background: #fdf9f4;
   box-sizing: border-box;
+}
+
+.detail-state {
+  display: flex;
+  min-height: 100vh;
+  padding: 40rpx;
+  align-items: center;
+  justify-content: center;
+  color: #8d8883;
+  font-size: 27rpx;
+  box-sizing: border-box;
+}
+
+.detail-state--error {
+  color: #d76832;
 }
 
 .hero-panel {

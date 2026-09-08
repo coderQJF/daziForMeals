@@ -25,4 +25,6 @@ export const serverConfig = {
   port: parsePort(process.env.PORT),
   corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS),
   isProduction: process.env.NODE_ENV === 'production',
+  databaseUrl: process.env.DATABASE_URL?.trim(),
+  assetBaseUrl: process.env.ASSET_BASE_URL?.trim() || 'https://img.coder-f-nowork.cn',
 }

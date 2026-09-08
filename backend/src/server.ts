@@ -1,7 +1,12 @@
 import { buildApp } from './app.js'
 import { serverConfig } from './config.js'
+import { createMemoryRecipeRepository } from './recipes/repository.js'
+import { createPostgresRecipeRepository } from './recipes/postgres-repository.js'
 
-const app = buildApp({ logger: true })
+const repository = serverConfig.databaseUrl
+  ? await createPostgresRecipeRepository(serverConfig.databaseUrl, serverConfig.assetBaseUrl)
+  : createMemoryRecipeRepository(serverConfig.assetBaseUrl)
+const app = buildApp({ logger: true, repository })
 
 async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, 'shutting down')

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onPullDownRefresh } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import AppTabBar from '@/components/AppTabBar.vue'
-import { cookingRecommendations } from '@/mocks/recipe'
 import { useRecipeStore } from '@/stores/recipe'
 import type { Recipe } from '@/types/recipe'
 
@@ -14,15 +14,37 @@ const filters = [
 ]
 
 const recipeStore = useRecipeStore()
+const { recipes, loading, errorMessage } = storeToRefs(recipeStore)
 const selectedFilter = ref('recover')
 const recommendationIndex = ref(0)
 const liked = ref(false)
+const selectedFilterLabel = computed(() => filters.find(item => item.id === selectedFilter.value)?.label ?? '今日')
 
-const mainRecipe = computed(() => cookingRecommendations[recommendationIndex.value % cookingRecommendations.length])
-const secondaryRecipes = computed(() => [
-  cookingRecommendations[(recommendationIndex.value + 1) % cookingRecommendations.length],
-  cookingRecommendations[(recommendationIndex.value + 2) % cookingRecommendations.length],
-])
+const mainRecipe = computed(() => recipes.value.length ? recipes.value[recommendationIndex.value % recipes.value.length] : undefined)
+const secondaryRecipes = computed(() => recipes.value.length
+  ? [recipes.value[(recommendationIndex.value + 1) % recipes.value.length], recipes.value[(recommendationIndex.value + 2) % recipes.value.length]].filter((recipe): recipe is NonNullable<typeof recipe> => Boolean(recipe))
+  : [])
+
+async function loadRecommendations() {
+  const query = selectedFilter.value === 'quick'
+    ? { category: 'quick' }
+    : selectedFilter.value === 'light'
+      ? { category: 'light' }
+      : selectedFilter.value === 'warm'
+        ? { q: '暖胃' }
+        : { status: 'recover' }
+  recommendationIndex.value = 0
+  try {
+    await recipeStore.loadRecipes(query)
+  } catch {
+    uni.showToast({ title: errorMessage.value, icon: 'none' })
+  }
+}
+
+async function selectFilter(id: string) {
+  selectedFilter.value = id
+  await loadRecommendations()
+}
 
 function isFavorite(recipe: Recipe) {
   return recipeStore.isFavorite(recipe.id)
@@ -39,7 +61,8 @@ function openRecipe(recipe: Recipe) {
 }
 
 function refreshRecommendation() {
-  recommendationIndex.value = (recommendationIndex.value + 1) % cookingRecommendations.length
+  if (!recipes.value.length) return
+  recommendationIndex.value = (recommendationIndex.value + 1) % recipes.value.length
   liked.value = false
   uni.showToast({ title: '已换一组推荐', icon: 'none' })
 }
@@ -49,9 +72,14 @@ function likeRecommendation() {
   uni.showToast({ title: liked.value ? '已记录你的喜好' : '已取消喜欢', icon: 'none' })
 }
 
-onPullDownRefresh(() => {
-  refreshRecommendation()
-  setTimeout(() => uni.stopPullDownRefresh(), 300)
+onLoad((query) => {
+  if (query?.type === 'quick') selectedFilter.value = 'quick'
+  void loadRecommendations()
+})
+
+onPullDownRefresh(async () => {
+  await loadRecommendations()
+  uni.stopPullDownRefresh()
 })
 </script>
 
@@ -68,7 +96,7 @@ onPullDownRefresh(() => {
           :key="item.id"
           class="filter-chip"
           :class="{ 'filter-chip--active': selectedFilter === item.id }"
-          @click="selectedFilter = item.id"
+          @click="selectFilter(item.id)"
         >
           <image :src="item.icon" mode="aspectFit" />
           <text>{{ item.label }}</text>
@@ -76,7 +104,9 @@ onPullDownRefresh(() => {
       </view>
     </scroll-view>
 
-    <view class="main-card" @click="openRecipe(mainRecipe)">
+    <view v-if="loading && !mainRecipe" class="data-state">正在生成适合你的推荐…</view>
+    <button v-else-if="errorMessage && !mainRecipe" class="data-state data-state--error" @click="loadRecommendations">{{ errorMessage }}，点击重试</button>
+    <view v-else-if="mainRecipe" class="main-card" @click="openRecipe(mainRecipe)">
       <view class="main-card__visual">
         <image class="main-card__image" :src="mainRecipe.hero" mode="aspectFill" />
         <image class="main-card__badge" src="/static/images/recommendation/badge-today.png" mode="aspectFit" />
@@ -93,7 +123,7 @@ onPullDownRefresh(() => {
       <view class="main-card__body">
         <view class="main-card__title-row">
           <text class="main-card__name">{{ mainRecipe.name }}</text>
-          <text class="main-card__recommend-tag">暖胃推荐</text>
+          <text class="main-card__recommend-tag">{{ selectedFilterLabel }}推荐</text>
         </view>
         <text class="main-card__reason"><text>推荐理由：</text>{{ mainRecipe.reason }}</text>
         <view class="tag-list">
@@ -106,7 +136,7 @@ onPullDownRefresh(() => {
       </view>
     </view>
 
-    <view class="secondary-grid">
+    <view v-if="mainRecipe" class="secondary-grid">
       <view v-for="recipe in secondaryRecipes" :key="recipe.id" class="secondary-card" @click="openRecipe(recipe)">
         <view class="secondary-card__visual">
           <image class="secondary-card__image" :src="recipe.cover" mode="aspectFill" />
@@ -132,7 +162,7 @@ onPullDownRefresh(() => {
       </view>
     </view>
 
-    <view class="action-grid">
+    <view v-if="mainRecipe" class="action-grid">
       <button class="action-button" @click="openRecipe(mainRecipe)">
         <image src="/static/images/recommendation/action-recipe.png" mode="aspectFit" />
         <text>查看做法</text>
@@ -187,6 +217,24 @@ onPullDownRefresh(() => {
   font-size: 43rpx;
   font-weight: 800;
   line-height: 1.2;
+}
+
+.data-state {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 300rpx;
+  margin-top: 28rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 30rpx;
+  background: #fff;
+  color: #8d8883;
+  font-size: 26rpx;
+}
+
+.data-state--error {
+  color: #d76832;
 }
 
 .filter-scroll {

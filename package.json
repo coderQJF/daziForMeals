@@ -18,8 +18,8 @@
     "verify:backend": "pnpm --dir backend verify",
     "verify": "pnpm run verify:backend && pnpm run verify:frontend",
     "deploy:frontend": "pnpm run verify:frontend",
-    "deploy:backend": "docker compose -f backend/compose.yaml up -d --build",
-    "logs:backend": "docker compose -f backend/compose.yaml logs -f api",
-    "stop:backend": "docker compose -f backend/compose.yaml down"
+    "deploy:backend": "docker compose --env-file backend/.env -f backend/compose.yaml up -d --build --wait --wait-timeout 60",
+    "logs:backend": "docker compose --env-file backend/.env -f backend/compose.yaml logs -f api",
+    "stop:backend": "docker compose --env-file backend/.env -f backend/compose.yaml down"
   }
 }

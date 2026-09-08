@@ -1,46 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { storeToRefs } from 'pinia'
 import AppTabBar from '@/components/AppTabBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
-import { todayRecipe } from '@/mocks/recipe'
 import { useRecipeStore } from '@/stores/recipe'
 import { useTabBarSelection } from '@/composables/useTabBarSelection'
-import { assetUrl } from '@/config/assets'
-
-interface CategoryCard {
-  id: string
-  name: string
-  description: string
-  icon: string
-  cover: string
-}
-
-const cookingCategories: CategoryCard[] = [
-  { id: 'quick', name: '快手菜', description: '15分钟上桌', icon: '/static/images/category/cooking/quick-icon.png', cover: assetUrl('images/category/cooking/quick-cover.jpg') },
-  { id: 'home-style', name: '家常菜', description: '家的味道', icon: '/static/images/category/cooking/home-style-icon.png', cover: assetUrl('images/category/cooking/home-style-cover.jpg') },
-  { id: 'soup', name: '汤羹', description: '温暖滋养', icon: '/static/images/category/cooking/soup-icon.png', cover: assetUrl('images/category/cooking/soup-cover.jpg') },
-  { id: 'light', name: '清淡', description: '少油少盐', icon: '/static/images/category/cooking/light-icon.png', cover: assetUrl('images/category/cooking/light-cover.jpg') },
-  { id: 'recovery', name: '恢复期', description: '营养修复', icon: '/static/images/category/cooking/recovery-icon.png', cover: assetUrl('images/category/cooking/recovery-cover.jpg') },
-]
-
-const takeoutCategories: CategoryCard[] = [
-  { id: 'hot-pot', name: '火锅', description: '热辣过瘾', icon: '/static/images/category/takeout/hot-pot-icon.png', cover: assetUrl('images/category/takeout/hot-pot-cover.jpg') },
-  { id: 'noodles', name: '面食', description: '面面俱到', icon: '/static/images/category/takeout/noodles-icon.png', cover: assetUrl('images/category/takeout/noodles-cover.jpg') },
-  { id: 'light-meal', name: '轻食', description: '轻盈健康', icon: '/static/images/category/takeout/light-meal-icon.png', cover: assetUrl('images/category/takeout/light-meal-cover.jpg') },
-  { id: 'fried-chicken', name: '炸鸡', description: '酥脆满足', icon: '/static/images/category/takeout/fried-chicken-icon.png', cover: assetUrl('images/category/takeout/fried-chicken-cover.jpg') },
-  { id: 'japanese', name: '日料', description: '新鲜美味', icon: '/static/images/category/takeout/japanese-icon.png', cover: assetUrl('images/category/takeout/japanese-cover.jpg') },
-]
-
-const statusFilters = [
-  { id: 'recover', icon: '🦴', name: '骨折恢复期' },
-  { id: 'late', icon: '🌙', name: '熬夜' },
-  { id: 'rainy', icon: '🌧️', name: '下雨天' },
-  { id: 'lazy', icon: '😴', name: '犯懒' },
-  { id: 'appetite', icon: '😟', name: '没胃口' },
-]
 
 const recipeStore = useRecipeStore()
-const selectedStatus = ref('recover')
+const { cookingCategories, takeoutCategories, statusOptions: statusFilters, selectedStatus, recommendation, loading, errorMessage } = storeToRefs(recipeStore)
+
+async function loadCategory(force = false) {
+  try {
+    await recipeStore.loadBootstrap(force)
+  } catch {
+    if (force) uni.showToast({ title: errorMessage.value, icon: 'none' })
+  }
+}
 
 useTabBarSelection(1)
 
@@ -68,18 +43,24 @@ function viewAll(source: 'cooking' | 'takeout') {
   uni.navigateTo({ url: `/pages/recipe/list?source=${source}` })
 }
 
-function selectStatus(id: string) {
-  selectedStatus.value = id
-  if (id !== 'rainy') recipeStore.selectStatus(id)
+async function selectStatus(id: string) {
+  recipeStore.selectStatus(id)
+  await loadCategory(true)
 }
 
-function refreshRecommendation() {
-  recipeStore.refreshRecommendation()
+async function refreshRecommendation() {
+  try {
+    await recipeStore.refreshRecommendation()
+  } catch {
+    uni.showToast({ title: errorMessage.value, icon: 'none' })
+  }
 }
 
 function openRecipe() {
-  uni.navigateTo({ url: `/pages/recipe/detail?id=${todayRecipe.id}` })
+  if (recommendation.value.id) uni.navigateTo({ url: `/pages/recipe/detail?id=${recommendation.value.id}` })
 }
+
+onShow(() => void loadCategory())
 </script>
 
 <template>
@@ -92,6 +73,9 @@ function openRecipe() {
       <image class="search__icon" src="/static/images/home/icon-search.png" mode="aspectFit" />
       <text class="search__placeholder">搜索菜名、口味或场景</text>
     </button>
+
+    <view v-if="loading && !cookingCategories.length" class="data-state">正在加载分类…</view>
+    <button v-else-if="errorMessage && !cookingCategories.length" class="data-state data-state--error" @click="loadCategory(true)">{{ errorMessage }}，点击重试</button>
 
     <view class="category-section">
       <view class="section-header">
@@ -145,17 +129,17 @@ function openRecipe() {
       <button class="refresh" @click="refreshRecommendation">换一换 <text>↻</text></button>
     </view>
 
-    <button class="recommend-card" @click="openRecipe">
-      <image class="recommend-card__cover" :src="todayRecipe.cover" mode="aspectFill" />
+    <button v-if="recommendation.id" class="recommend-card" @click="openRecipe">
+      <image class="recommend-card__cover" :src="recommendation.cover" mode="aspectFill" />
       <view class="recommend-card__body">
         <view class="recommend-card__top">
-          <text class="recommend-card__name">{{ todayRecipe.name }}</text>
+          <text class="recommend-card__name">{{ recommendation.name }}</text>
           <text class="recommend-card__arrow">›</text>
         </view>
         <view class="recommend-card__tags">
-          <text v-for="tag in todayRecipe.tags" :key="tag" class="recommend-card__tag">{{ tag }}</text>
+          <text v-for="tag in recommendation.tags" :key="tag" class="recommend-card__tag">{{ tag }}</text>
         </view>
-        <text class="recommend-card__reason">富含钙与胶原蛋白，助力骨骼修复，适合恢复期食用。</text>
+        <text class="recommend-card__reason">{{ recommendation.reason }}</text>
       </view>
     </button>
 
@@ -173,6 +157,22 @@ function openRecipe() {
   padding: 0 28rpx calc(env(safe-area-inset-bottom) + 164rpx);
   background: #fdf9f4;
   box-sizing: border-box;
+}
+
+.data-state {
+  display: flex;
+  min-height: 150rpx;
+  margin-top: 24rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24rpx;
+  background: #fff;
+  color: #8d8883;
+  font-size: 26rpx;
+}
+
+.data-state--error {
+  color: #d76832;
 }
 
 .category-page__glow {

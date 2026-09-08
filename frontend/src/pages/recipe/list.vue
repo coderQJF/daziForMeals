@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import AppTabBar from '@/components/AppTabBar.vue'
-import { recipeCatalog } from '@/mocks/recipe'
 import { useRecipeStore } from '@/stores/recipe'
 import type { Recipe } from '@/types/recipe'
 
@@ -18,34 +18,23 @@ const filters = ['综合', '最新', '热度'] as const
 const category = ref('')
 const activeFilter = ref<(typeof filters)[number]>('综合')
 const keyword = ref('')
-const loading = ref(true)
 const recipeStore = useRecipeStore()
+const { recipes: visibleRecipes, loading, errorMessage } = storeToRefs(recipeStore)
 
 const pageTitle = computed(() => categoryNames[category.value] ?? '做饭菜谱')
 
-function matchesCategory(recipe: Recipe) {
-  if (!category.value) return true
-  if (category.value === 'quick') return recipe.cookTime <= 25
-  if (category.value === 'home-style') return recipe.id === 1002
-  if (category.value === 'soup') return recipe.name.includes('汤') || recipe.category.includes('汤')
-  if (category.value === 'light') return recipe.tags.some(tag => ['清淡', '低脂'].includes(tag))
-  if (category.value === 'recovery') return recipe.tags.some(tag => ['高钙', '高蛋白', '易消化'].includes(tag))
-  return true
+async function loadList() {
+  try {
+    await recipeStore.loadRecipes({
+      category: category.value && category.value !== 'recovery' ? category.value : undefined,
+      status: category.value === 'recovery' ? 'recover' : undefined,
+      q: keyword.value.trim() || undefined,
+      sort: activeFilter.value === '最新' ? 'latest' : activeFilter.value === '热度' ? 'popular' : 'default',
+    })
+  } catch {
+    // Store exposes the user-facing error state.
+  }
 }
-
-const visibleRecipes = computed(() => {
-  const query = keyword.value.trim().toLowerCase()
-  const result = recipeCatalog.filter(recipe => {
-    const matchesKeyword = !query
-      || recipe.name.toLowerCase().includes(query)
-      || recipe.tags.some(tag => tag.toLowerCase().includes(query))
-    return matchesKeyword && matchesCategory(recipe)
-  })
-
-  if (activeFilter.value === '最新') return [...result].sort((a, b) => b.id - a.id)
-  if (activeFilter.value === '热度') return [...result].sort((a, b) => a.cookTime - b.cookTime)
-  return result
-})
 
 function goBack() {
   if (getCurrentPages().length > 1) {
@@ -66,7 +55,13 @@ function clearSearch() {
 
 onLoad((query) => {
   category.value = String(query?.category ?? '')
-  setTimeout(() => { loading.value = false }, 260)
+  void loadList()
+})
+
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch([keyword, activeFilter], () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => void loadList(), 300)
 })
 </script>
 
@@ -110,13 +105,19 @@ onLoad((query) => {
       </view>
     </view>
 
+    <button v-else-if="errorMessage" class="empty-state" @click="loadList">
+      <text class="empty-state__icon">⚠</text>
+      <text class="empty-state__title">{{ errorMessage }}</text>
+      <text class="empty-state__copy">点击重新加载菜谱</text>
+    </button>
+
     <view v-else-if="visibleRecipes.length" class="recipe-list">
       <button v-for="recipe in visibleRecipes" :key="recipe.id" class="recipe-row" @click="openRecipe(recipe)">
         <image class="recipe-image" :src="recipe.thumbnail || recipe.cover" mode="aspectFill" />
         <view class="recipe-content">
           <view class="recipe-title-row">
             <text class="recipe-name">{{ recipe.name }}</text>
-            <text class="recipe-score">★ {{ 8200 + recipe.id }}</text>
+            <text class="recipe-score">★ {{ recipe.popularity }}</text>
           </view>
           <view class="recipe-tags">
             <text v-for="tag in recipe.tags.slice(0, 3)" :key="tag">{{ tag }}</text>

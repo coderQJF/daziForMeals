@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { onPullDownRefresh } from '@dcloudio/uni-app'
+import { onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import AppTabBar from '@/components/AppTabBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
-import { quickCategories, statusOptions } from '@/mocks/recipe'
 import { useRecipeStore } from '@/stores/recipe'
 import { useTabBarSelection } from '@/composables/useTabBarSelection'
 import type { CategoryItem } from '@/types/recipe'
 
 const recipeStore = useRecipeStore()
-const { recommendation, selectedStatus, statusLabel } = storeToRefs(recipeStore)
+const { recommendation, selectedStatus, statusLabel, quickCategories, statusOptions, loading, errorMessage } = storeToRefs(recipeStore)
+
+async function loadHome(force = false) {
+  try {
+    await recipeStore.loadBootstrap(force)
+  } catch {
+    if (force) uni.showToast({ title: errorMessage.value, icon: 'none' })
+  }
+}
 
 function handleQuickAction(item: CategoryItem) {
   if (item.id === 'takeout') {
@@ -22,6 +29,7 @@ function handleQuickAction(item: CategoryItem) {
 }
 
 function openRecipe() {
+  if (!recommendation.value.id) return
   uni.navigateTo({ url: `/pages/recipe/detail?id=${recommendation.value.id}` })
 }
 
@@ -41,15 +49,27 @@ function openStatus() {
   uni.navigateTo({ url: '/pages/status/status' })
 }
 
-function refreshRecommendation() {
-  recipeStore.refreshRecommendation()
+async function refreshRecommendation() {
+  try {
+    await recipeStore.refreshRecommendation()
+    uni.showToast({ title: '已为你刷新推荐', icon: 'none' })
+  } catch {
+    uni.showToast({ title: errorMessage.value, icon: 'none' })
+  }
+}
+
+async function selectStatus(status: string) {
+  recipeStore.selectStatus(status)
+  await loadHome(true)
 }
 
 useTabBarSelection(0)
 
-onPullDownRefresh(() => {
-  recipeStore.refreshRecommendation()
-  setTimeout(() => uni.stopPullDownRefresh(), 350)
+onShow(() => void loadHome())
+
+onPullDownRefresh(async () => {
+  await loadHome(true)
+  uni.stopPullDownRefresh()
 })
 </script>
 
@@ -72,20 +92,10 @@ onPullDownRefresh(() => {
     </button>
 
     <view class="quick-grid">
-      <button class="quick-card quick-card--1" @click="handleQuickAction(quickCategories[0])">
-        <image class="quick-card__image" src="/static/images/home/action-cook.png" mode="aspectFit" />
-        <text class="quick-card__name">{{ quickCategories[0].name }}</text>
-        <text class="quick-card__desc">{{ quickCategories[0].description }}</text>
-      </button>
-      <button class="quick-card quick-card--2" @click="handleQuickAction(quickCategories[1])">
-        <image class="quick-card__image" src="/static/images/home/action-takeout.png" mode="aspectFit" />
-        <text class="quick-card__name">{{ quickCategories[1].name }}</text>
-        <text class="quick-card__desc">{{ quickCategories[1].description }}</text>
-      </button>
-      <button class="quick-card quick-card--3" @click="handleQuickAction(quickCategories[2])">
-        <image class="quick-card__image" src="/static/images/home/action-recover.png" mode="aspectFit" />
-        <text class="quick-card__name">{{ quickCategories[2].name }}</text>
-        <text class="quick-card__desc">{{ quickCategories[2].description }}</text>
+      <button v-for="(item, index) in quickCategories" :key="item.id" class="quick-card" :class="`quick-card--${index + 1}`" @click="handleQuickAction(item)">
+        <image class="quick-card__image" :src="item.icon" mode="aspectFit" />
+        <text class="quick-card__name">{{ item.name }}</text>
+        <text class="quick-card__desc">{{ item.description }}</text>
       </button>
     </view>
 
@@ -114,7 +124,7 @@ onPullDownRefresh(() => {
             :key="item.id"
             class="status-chip"
             :class="{ 'status-chip--active': item.id === selectedStatus }"
-            @click="recipeStore.selectStatus(item.id)"
+            @click="selectStatus(item.id)"
           >
             {{ item.name }}
           </button>
@@ -127,14 +137,18 @@ onPullDownRefresh(() => {
       <button class="more" @click="openMore">查看更多 <text class="more__arrow">›</text></button>
     </view>
 
-    <button class="recipe-card" @click="openRecipe">
+    <view v-if="loading && !recommendation.id" class="data-state">正在加载今日推荐…</view>
+    <button v-else-if="errorMessage && !recommendation.id" class="data-state data-state--error" @click="loadHome(true)">
+      {{ errorMessage }}，点击重试
+    </button>
+    <button v-else-if="recommendation.id" class="recipe-card" @click="openRecipe">
       <image class="recipe-card__cover" :src="recommendation.cover" mode="aspectFill" />
       <view class="recipe-card__body">
         <view class="recipe-card__title-row">
           <text class="recipe-card__name">{{ recommendation.name }}</text>
           <text class="recipe-card__badge">{{ statusLabel }}推荐</text>
         </view>
-        <text class="recipe-card__reason">富含钙与胶原蛋白，助力骨骼修复</text>
+        <text class="recipe-card__reason">{{ recommendation.reason }}</text>
         <view class="recipe-card__tags">
           <text v-for="tag in recommendation.tags" :key="tag" class="recipe-card__tag">{{ tag }}</text>
         </view>
@@ -183,6 +197,21 @@ onPullDownRefresh(() => {
 .recipe-card {
   position: relative;
   z-index: 1;
+}
+
+.data-state {
+  display: flex;
+  min-height: 180rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 26rpx;
+  background: #fff;
+  color: #8d8883;
+  font-size: 26rpx;
+}
+
+.data-state--error {
+  color: #d76832;
 }
 
 .header__row {
