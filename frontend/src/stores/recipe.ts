@@ -246,6 +246,7 @@ export const useRecipeStore = defineStore('recipe', () => {
     userLoaded,
     userLoading,
     userErrorMessage,
+    applyUserState,
     loadBootstrap,
     loadRecipes,
     loadRecipe,

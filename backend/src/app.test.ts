@@ -89,3 +89,64 @@ test('plan and takeout pages receive API-backed data', async () => {
   assert.ok(takeout.json().data.every((shop: { categoryId: string }) => shop.categoryId === 'hot-pot'))
   await app.close()
 })
+
+test('WeChat login claims device state and authorizes later requests', async () => {
+  const app = buildApp({
+    logger: false,
+    sessionSecret: 'test-session-secret-with-at-least-32-characters',
+    wechatCodeExchange: async (code) => {
+      assert.equal(code, 'temporary-wechat-code')
+      return { openid: 'openid-for-test-user' }
+    },
+  })
+  const deviceHeaders = { 'x-client-id': 'login-device-001' }
+  await app.inject({
+    method: 'PUT',
+    url: '/api/v1/me',
+    headers: deviceHeaders,
+    payload: { favoriteRecipeIds: [1001], plannedRecipeIds: [2003] },
+  })
+
+  const login = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/wechat',
+    headers: deviceHeaders,
+    payload: { code: 'temporary-wechat-code' },
+  })
+  assert.equal(login.statusCode, 200)
+  const session = login.json().data
+  assert.ok(session.token)
+  assert.ok(session.expiresAt)
+  assert.deepEqual(session.user.favoriteRecipeIds, [1001])
+  assert.deepEqual(session.user.plannedRecipeIds, [2003])
+  assert.equal(session.user.clientId, undefined)
+
+  const authenticated = await app.inject({
+    method: 'GET',
+    url: '/api/v1/me',
+    headers: { authorization: `Bearer ${session.token}`, 'x-client-id': 'other-device-002' },
+  })
+  assert.equal(authenticated.statusCode, 200)
+  assert.deepEqual(authenticated.json().data.favoriteRecipeIds, [1001])
+
+  const invalid = await app.inject({
+    method: 'GET',
+    url: '/api/v1/me',
+    headers: { authorization: 'Bearer invalid-token', 'x-client-id': 'other-device-002' },
+  })
+  assert.equal(invalid.statusCode, 401)
+  assert.equal(invalid.json().error.code, 'INVALID_SESSION')
+  await app.close()
+})
+
+test('WeChat login reports missing server configuration', async () => {
+  const app = buildApp({ logger: false })
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/wechat',
+    payload: { code: 'temporary-wechat-code' },
+  })
+  assert.equal(response.statusCode, 503)
+  assert.equal(response.json().error.code, 'WECHAT_LOGIN_NOT_CONFIGURED')
+  await app.close()
+})

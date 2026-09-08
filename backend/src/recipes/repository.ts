@@ -133,6 +133,13 @@ export function createMemoryRecipeRepository(assetBaseUrl: string): RecipeReposi
       userStates.set(clientId, next)
       return structuredClone(next)
     },
+    async claimUserState(sourceClientId, userClientId) {
+      const existing = userStates.get(userClientId)
+      if (existing) return structuredClone(existing)
+      const claimed = { ...structuredClone(getState(sourceClientId)), clientId: userClientId }
+      userStates.set(userClientId, claimed)
+      return structuredClone(claimed)
+    },
     async getPlan(clientId, date) {
       return mapPlanPayload(recipes, getState(clientId), date, assetBaseUrl)
     },

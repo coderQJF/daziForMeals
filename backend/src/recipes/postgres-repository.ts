@@ -118,6 +118,17 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
       )
       return result.rows[0]?.payload ?? next
     },
+    async claimUserState(sourceClientId, userClientId) {
+      const source = await getOrCreateUserState(sourceClientId)
+      const claimed = { ...source, clientId: userClientId }
+      await pool.query(
+        `INSERT INTO fandazi_user_state (client_id, payload)
+         VALUES ($1, $2::jsonb)
+         ON CONFLICT (client_id) DO NOTHING`,
+        [userClientId, JSON.stringify(claimed)],
+      )
+      return getOrCreateUserState(userClientId)
+    },
     async getPlan(clientId, date) {
       return mapPlanPayload(recipes, await getOrCreateUserState(clientId), date, assetBaseUrl)
     },

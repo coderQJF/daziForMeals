@@ -16,6 +16,7 @@ pnpm dev:backend
 - `GET /health`
 - `GET /api/v1/health`
 - `GET /api/v1`
+- `POST /api/v1/auth/wechat`
 - `GET /api/v1/bootstrap?status=recover&offset=0`
 - `GET /api/v1/recipes?category=soup&q=汤&status=recover&sort=default&limit=20`
 - `GET /api/v1/recipes/:id`
@@ -24,7 +25,7 @@ pnpm dev:backend
 - `GET /api/v1/plan?date=2026-09-08`
 - `GET /api/v1/takeout?category=hot-pot`
 
-客户端会通过 `x-client-id` 区分设备，收藏、喜欢、做过、身体状态和计划菜谱保存在 PostgreSQL 的 `fandazi_user_state` 表中。当前是单机版设备身份方案；接入微信登录后可将该标识替换为服务端会话。
+未登录客户端通过 `x-client-id` 区分设备。微信登录成功后，客户端改用服务端签名会话；首次登录会将当前设备的收藏、喜欢、做过、身体状态和计划菜谱复制到微信账号，之后不会用其他设备数据覆盖账号已有数据。状态保存在 PostgreSQL 的 `fandazi_user_state` 表中，微信 `session_key` 不会下发到客户端。
 
 未设置 `DATABASE_URL` 时，本地开发和自动化测试使用内存种子数据；Docker 部署会连接内部 PostgreSQL。首次启动会写入缺失的分类、状态和菜谱数据，已有数据库记录不会在重启时被覆盖。
 
@@ -41,6 +42,7 @@ pnpm build:backend
 
 1. 将 `.env.example` 复制为 `.env`，按生产环境修改。
    `DB_PASSWORD` 必须替换为随机强密码；数据库仅在 Docker 内部网络开放。
+   `WECHAT_APP_SECRET` 只能保存在服务器 `.env`，不得提交到仓库；`SESSION_SECRET` 使用至少 32 字节的随机值。
 2. 将 `deploy/nginx-api.conf.example` 安装为 Nginx 站点配置；生产环境示例将宿主机 `3100` 端口反向代理到 API。
 3. 为 `fandazi-api.coder-f-nowork.cn` 配置 HTTPS 证书。
 4. 在仓库根目录执行 `pnpm deploy:backend`。

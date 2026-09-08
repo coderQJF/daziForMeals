@@ -5,7 +5,6 @@ export interface UserProfile {
 }
 
 export interface UserDashboard {
-  clientId: string
   selectedStatus: string
   favoriteRecipeIds: number[]
   likedRecipeIds: number[]

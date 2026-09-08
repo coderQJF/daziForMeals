@@ -78,7 +78,7 @@ export interface UserState {
 
 export type UserStateUpdate = Partial<Omit<UserState, 'clientId'>>
 
-export interface UserDashboard extends UserState {
+export interface UserDashboard extends Omit<UserState, 'clientId'> {
   stats: {
     favorites: number
     likes: number
@@ -143,6 +143,7 @@ export interface RecipeRepository {
   findById(id: number): Promise<Recipe | undefined>
   getUserState(clientId: string): Promise<UserState>
   updateUserState(clientId: string, update: UserStateUpdate): Promise<UserState>
+  claimUserState(sourceClientId: string, userClientId: string): Promise<UserState>
   getPlan(clientId: string, date: string): Promise<PlanPayload>
   listTakeout(category?: string): Promise<TakeoutShop[]>
   close?(): Promise<void>

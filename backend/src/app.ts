@@ -1,5 +1,6 @@
 import cors from '@fastify/cors'
 import Fastify, { type FastifyInstance } from 'fastify'
+import { createSessionToken, createWechatCodeExchange, createWechatSubject, verifySessionToken, WechatLoginError, type WechatCodeExchange } from './auth/wechat.js'
 import { serverConfig } from './config.js'
 import { createMemoryRecipeRepository } from './recipes/repository.js'
 import type { RecipeQuery, RecipeRepository, UserDashboard, UserState, UserStateUpdate } from './recipes/types.js'
@@ -7,16 +8,32 @@ import type { RecipeQuery, RecipeRepository, UserDashboard, UserState, UserState
 export interface BuildAppOptions {
   logger?: boolean
   repository?: RecipeRepository
+  sessionSecret?: string
+  wechatCodeExchange?: WechatCodeExchange
 }
 
-function resolveClientId(headers: Record<string, unknown>): string {
+class InvalidSessionError extends Error {}
+
+function resolveDeviceClientId(headers: Record<string, unknown>): string {
   const value = headers['x-client-id']
   return typeof value === 'string' && /^[a-zA-Z0-9_-]{8,80}$/.test(value) ? value : 'anonymous-default'
 }
 
+function resolveClientId(headers: Record<string, unknown>, sessionSecret: string | undefined): string {
+  const authorization = headers.authorization
+  if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ')) {
+    return resolveDeviceClientId(headers)
+  }
+  if (!sessionSecret) throw new InvalidSessionError()
+  const subject = verifySessionToken(authorization.slice('Bearer '.length), sessionSecret)
+  if (!subject) throw new InvalidSessionError()
+  return subject
+}
+
 function toDashboard(state: UserState): UserDashboard {
+  const { clientId: _clientId, ...publicState } = state
   return {
-    ...state,
+    ...publicState,
     stats: {
       favorites: state.favoriteRecipeIds.length,
       likes: state.likedRecipeIds.length,
@@ -64,6 +81,12 @@ function parseUserStateUpdate(body: unknown): UserStateUpdate {
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const repository = options.repository ?? createMemoryRecipeRepository(serverConfig.assetBaseUrl)
+  const sessionSecret = options.sessionSecret ?? serverConfig.sessionSecret
+  const wechatCodeExchange = options.wechatCodeExchange ?? (
+    serverConfig.wechatAppId && serverConfig.wechatAppSecret
+      ? createWechatCodeExchange(serverConfig.wechatAppId, serverConfig.wechatAppSecret)
+      : undefined
+  )
   const app = Fastify({
     logger: options.logger ?? serverConfig.isProduction,
     trustProxy: true,
@@ -71,6 +94,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   void app.register(cors, {
     origin: serverConfig.corsOrigins,
+  })
+
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof InvalidSessionError) {
+      return reply.code(401).send({ error: { code: 'INVALID_SESSION', message: '登录已过期，请重新登录' } })
+    }
+    request.log.error(error)
+    return reply.send(error)
   })
 
   if (repository.close) {
@@ -90,6 +121,37 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     name: '饭搭子 API',
     version: 'v1',
   }))
+
+  app.post('/api/v1/auth/wechat', async (request, reply) => {
+    if (!wechatCodeExchange || !sessionSecret) {
+      return reply.code(503).send({ error: { code: 'WECHAT_LOGIN_NOT_CONFIGURED', message: '微信登录尚未配置' } })
+    }
+
+    const body = request.body as Record<string, unknown> | undefined
+    const code = typeof body?.code === 'string' ? body.code.trim() : ''
+    if (!code || code.length > 256) {
+      return reply.code(400).send({ error: { code: 'INVALID_WECHAT_CODE', message: '微信登录凭证无效' } })
+    }
+
+    try {
+      const identity = await wechatCodeExchange(code)
+      const userClientId = createWechatSubject(identity.openid)
+      const state = await repository.claimUserState(resolveDeviceClientId(request.headers), userClientId)
+      const session = createSessionToken(userClientId, sessionSecret)
+      return {
+        data: {
+          ...session,
+          user: toDashboard(state),
+        },
+      }
+    } catch (error) {
+      if (error instanceof WechatLoginError) {
+        return reply.code(401).send({ error: { code: error.code, message: error.message } })
+      }
+      request.log.error(error)
+      return reply.code(502).send({ error: { code: 'WECHAT_SERVICE_UNAVAILABLE', message: '微信登录服务暂时不可用' } })
+    }
+  })
 
   app.get('/api/v1/bootstrap', async (request) => {
     const query = request.query as Record<string, unknown>
@@ -126,14 +188,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   })
 
   app.get('/api/v1/me', async (request) => {
-    const state = await repository.getUserState(resolveClientId(request.headers))
+    const state = await repository.getUserState(resolveClientId(request.headers, sessionSecret))
     return { data: toDashboard(state) }
   })
 
   app.put('/api/v1/me', async (request, reply) => {
     try {
       const state = await repository.updateUserState(
-        resolveClientId(request.headers),
+        resolveClientId(request.headers, sessionSecret),
         parseUserStateUpdate(request.body),
       )
       return { data: toDashboard(state) }
@@ -148,7 +210,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     const date = typeof query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(query.date)
       ? query.date
       : new Date().toISOString().slice(0, 10)
-    return { data: await repository.getPlan(resolveClientId(request.headers), date) }
+    return { data: await repository.getPlan(resolveClientId(request.headers, sessionSecret), date) }
   })
 
   app.get('/api/v1/takeout', async (request) => {
