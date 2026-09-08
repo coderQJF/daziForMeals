@@ -17,15 +17,16 @@ const recipeStore = useRecipeStore()
 const { recipes, loading, errorMessage } = storeToRefs(recipeStore)
 const selectedFilter = ref('recover')
 const recommendationIndex = ref(0)
-const liked = ref(false)
 const selectedFilterLabel = computed(() => filters.find(item => item.id === selectedFilter.value)?.label ?? '今日')
 
 const mainRecipe = computed(() => recipes.value.length ? recipes.value[recommendationIndex.value % recipes.value.length] : undefined)
+const liked = computed(() => mainRecipe.value ? recipeStore.isLiked(mainRecipe.value.id) : false)
 const secondaryRecipes = computed(() => recipes.value.length
   ? [recipes.value[(recommendationIndex.value + 1) % recipes.value.length], recipes.value[(recommendationIndex.value + 2) % recipes.value.length]].filter((recipe): recipe is NonNullable<typeof recipe> => Boolean(recipe))
   : [])
 
 async function loadRecommendations() {
+  await recipeStore.loadUserState()
   const query = selectedFilter.value === 'quick'
     ? { category: 'quick' }
     : selectedFilter.value === 'light'
@@ -63,12 +64,12 @@ function openRecipe(recipe: Recipe) {
 function refreshRecommendation() {
   if (!recipes.value.length) return
   recommendationIndex.value = (recommendationIndex.value + 1) % recipes.value.length
-  liked.value = false
   uni.showToast({ title: '已换一组推荐', icon: 'none' })
 }
 
 function likeRecommendation() {
-  liked.value = !liked.value
+  if (!mainRecipe.value) return
+  recipeStore.toggleLike(mainRecipe.value.id)
   uni.showToast({ title: liked.value ? '已记录你的喜好' : '已取消喜欢', icon: 'none' })
 }
 

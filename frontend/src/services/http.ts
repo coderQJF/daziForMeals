@@ -17,12 +17,23 @@ export class ApiError extends Error {
   }
 }
 
-export function apiGet<T>(path: string, data?: Record<string, string | number>): Promise<T> {
+const CLIENT_ID_STORAGE_KEY = 'fandaziClientId'
+
+function getClientId(): string {
+  const existing = uni.getStorageSync(CLIENT_ID_STORAGE_KEY)
+  if (typeof existing === 'string' && existing.length >= 8) return existing
+  const created = `wx_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`
+  uni.setStorageSync(CLIENT_ID_STORAGE_KEY, created)
+  return created
+}
+
+export function apiRequest<T>(method: 'GET' | 'PUT', path: string, data?: Record<string, unknown>): Promise<T> {
   return new Promise((resolve, reject) => {
     uni.request({
       url: `${API_BASE_URL}${path}`,
-      method: 'GET',
+      method,
       data,
+      header: { 'x-client-id': getClientId() },
       timeout: 10000,
       success(response: UniApp.RequestSuccessCallbackResult) {
         if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -37,4 +48,8 @@ export function apiGet<T>(path: string, data?: Record<string, string | number>):
       },
     })
   })
+}
+
+export function apiGet<T>(path: string, data?: Record<string, string | number>): Promise<T> {
+  return apiRequest<T>('GET', path, data)
 }

@@ -1,18 +1,22 @@
 <script setup lang="ts">
+import { onLoad } from '@dcloudio/uni-app'
+import { storeToRefs } from 'pinia'
 import { ref } from 'vue'
-import { statusOptions } from '@/mocks/recipe'
 import { useRecipeStore } from '@/stores/recipe'
 
 const store = useRecipeStore()
+const { statusOptions, loading, errorMessage } = storeToRefs(store)
 const selected = ref(store.selectedStatus)
-const extendedOptions = [
-  ...statusOptions,
-  { id: 'cold', name: '感冒发烧', icon: '🤒' },
-  { id: 'stress', name: '压力很大', icon: '😣' },
-  { id: 'light', name: '清淡饮食', icon: '🥬' },
-  { id: 'energy', name: '需要补能', icon: '⚡' },
-  { id: 'normal', name: '状态不错', icon: '😊' },
-]
+
+async function loadStatuses() {
+  await store.loadUserState(true)
+  selected.value = store.selectedStatus
+  try {
+    await store.loadBootstrap()
+  } catch {
+    // The page exposes the API error and offers an explicit retry.
+  }
+}
 
 function complete() {
   store.selectStatus(selected.value)
@@ -22,6 +26,8 @@ function complete() {
     else uni.switchTab({ url: '/pages/index/index' })
   }, 350)
 }
+
+onLoad(() => void loadStatuses())
 </script>
 
 <template>
@@ -30,13 +36,15 @@ function complete() {
     <image class="status-hero" src="/static/images/home/action-recover.png" mode="aspectFit" />
     <text class="title">选择你的身体状态</text>
     <text class="subtitle">选择当前最明显的状态，饭搭子会推荐更合适的食谱</text>
-    <view class="option-grid">
-      <button v-for="item in extendedOptions" :key="item.id" class="option" :class="{ 'option--active': selected === item.id }" @click="selected = item.id">
+    <view v-if="loading && !statusOptions.length" class="api-state">正在加载状态选项…</view>
+    <view v-else-if="errorMessage && !statusOptions.length" class="api-state" @click="loadStatuses">{{ errorMessage }}，点击重试</view>
+    <view v-else class="option-grid">
+      <button v-for="item in statusOptions" :key="item.id" class="option" :class="{ 'option--active': selected === item.id }" @click="selected = item.id">
         <text class="option__icon">{{ item.icon }}</text>
         <text class="option__name">{{ item.name }}</text>
       </button>
     </view>
-    <button class="complete" @click="complete">完成（1/9）</button>
+    <button class="complete" :disabled="!selected" @click="complete">完成（1/{{ statusOptions.length || 1 }}）</button>
   </view>
 </template>
 
@@ -47,6 +55,7 @@ function complete() {
 .status-hero { position: relative; display: block; width: 190rpx; height: 190rpx; margin: 20rpx auto 0; }
 .title { position: relative; display: block; margin-top: 26rpx; font-size: 40rpx; font-weight: 800; text-align: center; }
 .subtitle { position: relative; display: block; margin-top: 14rpx; color: $color-text-secondary; font-size: 24rpx; line-height: 1.5; text-align: center; }
+.api-state { position: relative; margin-top: 48rpx; padding: 42rpx 24rpx; border-radius: 24rpx; background: #fff; color: $color-text-secondary; font-size: 24rpx; text-align: center; }
 .option-grid { position: relative; display: grid; margin-top: 48rpx; grid-template-columns: repeat(3, 1fr); gap: 18rpx; }
 .option { display: flex; height: 150rpx; align-items: center; justify-content: center; flex-direction: column; border: 2rpx solid transparent; border-radius: 24rpx; background: rgba(255,255,255,.88); box-shadow: $shadow-card; }
 .option--active { color: #5b814a; border-color: $color-success; background: $color-success-soft; }

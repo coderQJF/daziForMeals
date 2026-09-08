@@ -1,19 +1,22 @@
 <script setup lang="ts">
+import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { storeToRefs } from 'pinia'
 import AppTabBar from '@/components/AppTabBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
-import { planMeals as basePlanMeals, type PlanDish } from '@/mocks/plan'
-import { recipeCatalog } from '@/mocks/recipe'
+import { experienceApi } from '@/services/experience'
 import { useRecipeStore } from '@/stores/recipe'
 import { useTabBarSelection } from '@/composables/useTabBarSelection'
+import type { PlanDish, PlanMeal } from '@/types/experience'
 
-const designDate = new Date(2024, 4, 30)
+const today = new Date()
+const designDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
 const selectedDateTime = ref(designDate.getTime())
 const calendarMonthTime = ref(new Date(designDate.getFullYear(), designDate.getMonth(), 1).getTime())
 const calendarVisible = ref(false)
 const recipeStore = useRecipeStore()
-const { plannedRecipeIds } = storeToRefs(recipeStore)
+const planMeals = ref<PlanMeal[]>([])
+const loading = ref(false)
+const errorMessage = ref('')
 const weekLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const calendarWeekLabels = ['一', '二', '三', '四', '五', '六', '日']
 
@@ -26,16 +29,26 @@ interface CalendarCell {
   isSelected: boolean
 }
 
-const planMeals = computed(() => basePlanMeals.map((meal) => {
-  if (meal.id !== 'lunch') return meal
-  const existingIds = new Set(meal.dishes.map(dish => dish.id))
-  const addedDishes = plannedRecipeIds.value
-    .filter(id => !existingIds.has(id))
-    .map(id => recipeCatalog.find(recipe => recipe.id === id))
-    .filter((recipe): recipe is NonNullable<typeof recipe> => Boolean(recipe))
-    .map(recipe => ({ id: recipe.id, name: recipe.name, amount: '1份', image: recipe.thumbnail || recipe.cover }))
-  return { ...meal, dishes: [...meal.dishes, ...addedDishes] }
-}))
+function formatDate(time: number) {
+  const date = new Date(time)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+async function loadPlan() {
+  loading.value = true
+  errorMessage.value = ''
+  await recipeStore.loadUserState(true)
+  try {
+    const payload = await experienceApi.getPlan(formatDate(selectedDateTime.value))
+    planMeals.value = payload.meals
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '饮食计划加载失败'
+  } finally {
+    loading.value = false
+  }
+}
 
 function isSameDay(left: Date, right: Date) {
   return left.getFullYear() === right.getFullYear()
@@ -91,10 +104,11 @@ useTabBarSelection(2)
 
 function selectDay(time: number) {
   selectedDateTime.value = time
+  void loadPlan()
 }
 
 function openPlanDetail() {
-  uni.navigateTo({ url: '/pages/plan/detail' })
+  uni.navigateTo({ url: `/pages/plan/detail?date=${formatDate(selectedDateTime.value)}` })
 }
 
 function openCalendar() {
@@ -118,12 +132,14 @@ function selectCalendarDay(cell: CalendarCell) {
     const date = new Date(cell.time)
     calendarMonthTime.value = new Date(date.getFullYear(), date.getMonth(), 1).getTime()
   }
+  void loadPlan()
 }
 
 function selectToday() {
   const today = new Date()
   selectedDateTime.value = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
   calendarMonthTime.value = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
+  void loadPlan()
 }
 
 function openDish(dish: PlanDish) {
@@ -139,6 +155,8 @@ function replaceDish(dish: PlanDish) {
     },
   })
 }
+
+onShow(() => void loadPlan())
 </script>
 
 <template>
@@ -169,7 +187,13 @@ function replaceDish(dish: PlanDish) {
       </button>
     </view>
 
-    <view class="meal-list">
+    <view v-if="loading && !planMeals.length" class="plan-state">正在加载饮食计划…</view>
+    <view v-else-if="errorMessage && !planMeals.length" class="plan-state">
+      <text>{{ errorMessage }}</text>
+      <button @click="loadPlan">重新加载</button>
+    </view>
+
+    <view v-else class="meal-list">
       <view v-for="meal in planMeals" :key="meal.id" class="meal-card">
         <button class="meal-card__header" @click="openPlanDetail">
           <view class="meal-card__title">
@@ -274,10 +298,31 @@ function replaceDish(dish: PlanDish) {
 
 .header,
 .week-card,
+.plan-state,
 .meal-list,
 .hold-tip {
   position: relative;
   z-index: 1;
+}
+
+.plan-state {
+  display: flex;
+  min-height: 360rpx;
+  margin-top: 18rpx;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 20rpx;
+  color: #8d8580;
+  font-size: 26rpx;
+}
+
+.plan-state button {
+  padding: 14rpx 28rpx;
+  border-radius: 999rpx;
+  background: #ff900b;
+  color: #fff;
+  font-size: 24rpx;
 }
 
 .header {

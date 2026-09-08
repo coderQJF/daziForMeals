@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { onShow } from '@dcloudio/uni-app'
+import { storeToRefs } from 'pinia'
 import AppTabBar from '@/components/AppTabBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useTabBarSelection } from '@/composables/useTabBarSelection'
-import { assetUrl } from '@/config/assets'
+import { useRecipeStore } from '@/stores/recipe'
 
 interface MenuItem {
   id: 'taste' | 'kitchen' | 'records' | 'couple' | 'settings'
@@ -25,7 +27,8 @@ const settingsItem: MenuItem = {
   tone: '#f2f3f5',
 }
 
-const profileAvatar = assetUrl('images/user/avatar-female.png')
+const recipeStore = useRecipeStore()
+const { profile, userStats, userLoading, userErrorMessage } = storeToRefs(recipeStore)
 
 useTabBarSelection(4)
 
@@ -57,6 +60,8 @@ function handleMenu(item: MenuItem) {
 
   uni.showToast({ title: messages[item.id], icon: 'none' })
 }
+
+onShow(() => void recipeStore.loadUserState(true))
 </script>
 
 <template>
@@ -65,11 +70,14 @@ function handleMenu(item: MenuItem) {
 
     <AppHeader title="我的" action-icon="/static/images/user/notification-bell.png" action-label="查看消息" @action="showNotice" />
 
+    <button v-if="userErrorMessage" class="api-state" @click="recipeStore.loadUserState(true)">{{ userErrorMessage }}，点击重试</button>
+    <view v-else-if="userLoading" class="api-state">正在同步个人数据…</view>
+
     <button class="profile-card" @click="editProfile">
-      <image class="profile-card__avatar" :src="profileAvatar" mode="aspectFit" />
+      <image class="profile-card__avatar" :src="profile.avatar" mode="aspectFit" />
       <view class="profile-card__copy">
-        <text class="profile-card__nickname">早睡早起吃饭饭 ☀️</text>
-        <text class="profile-card__bio">享受每一餐，认真生活每一天～</text>
+        <text class="profile-card__nickname">{{ profile.nickname }}</text>
+        <text class="profile-card__bio">{{ profile.bio }}</text>
       </view>
       <text class="page-chevron">›</text>
     </button>
@@ -77,17 +85,17 @@ function handleMenu(item: MenuItem) {
     <view class="stats-card">
       <button class="stat-item" @click="openFavorite">
         <text class="stat-item__symbol stat-item__symbol--star">★</text>
-        <text class="stat-item__number">56</text>
+        <text class="stat-item__number">{{ userStats.favorites }}</text>
         <text class="stat-item__label">收藏</text>
       </button>
       <button class="stat-item" @click="openFavorite">
         <text class="stat-item__symbol stat-item__symbol--heart">♥</text>
-        <text class="stat-item__number">128</text>
+        <text class="stat-item__number">{{ userStats.likes }}</text>
         <text class="stat-item__label">喜欢</text>
       </button>
       <button class="stat-item" @click="openFavorite">
         <view class="stat-item__done">✓</view>
-        <text class="stat-item__number">36</text>
+        <text class="stat-item__number">{{ userStats.cooked }}</text>
         <text class="stat-item__label">做过</text>
       </button>
     </view>
@@ -153,12 +161,27 @@ function handleMenu(item: MenuItem) {
 }
 
 .page-header,
+.api-state,
 .profile-card,
 .stats-card,
 .menu-card,
 .meal-reminder {
   position: relative;
   z-index: 1;
+}
+
+.api-state {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  margin-top: 12rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: #fff7e8;
+  color: #8d827a;
+  font-size: 24rpx;
+  text-align: center;
 }
 
 .page-header {

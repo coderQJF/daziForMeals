@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { onShow } from '@dcloudio/uni-app'
+import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import AppTabBar from '@/components/AppTabBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useTabBarSelection } from '@/composables/useTabBarSelection'
-import { recipeCatalog } from '@/mocks/recipe'
 import { useRecipeStore } from '@/stores/recipe'
 
 type KitchenTab = 'favorite' | 'cooked'
@@ -20,12 +21,12 @@ interface KitchenRecipe {
 
 const activeTab = ref<KitchenTab>('favorite')
 const recipeStore = useRecipeStore()
-const cookedIds = ref<number[]>(uni.getStorageSync('cookedRecipeIds') || [2001])
+const { recipes, cookedRecipeIds, loading, errorMessage, userErrorMessage } = storeToRefs(recipeStore)
 
 const visibleRecipes = computed<KitchenRecipe[]>(() => {
   const filtered = activeTab.value === 'favorite'
-    ? recipeCatalog.filter(recipe => recipeStore.isFavorite(recipe.id))
-    : recipeCatalog.filter(recipe => cookedIds.value.includes(recipe.id))
+    ? recipes.value.filter(recipe => recipeStore.isFavorite(recipe.id))
+    : recipes.value.filter(recipe => recipeStore.isCooked(recipe.id))
 
   return filtered.map(recipe => ({
     id: recipe.id,
@@ -34,9 +35,18 @@ const visibleRecipes = computed<KitchenRecipe[]>(() => {
     cookTime: recipe.cookTime,
     servings: recipe.servings,
     cover: recipe.cover,
-    cooked: cookedIds.value.includes(recipe.id),
+    cooked: cookedRecipeIds.value.includes(recipe.id),
   }))
 })
+
+async function loadKitchen() {
+  await recipeStore.loadUserState(true)
+  try {
+    await recipeStore.loadRecipes({ limit: 100 })
+  } catch {
+    // The page renders the store error state and keeps cached user interactions.
+  }
+}
 
 useTabBarSelection(3)
 
@@ -71,8 +81,7 @@ function openRecipeMenu(recipe: KitchenRecipe) {
         return
       }
 
-      if (!cookedIds.value.includes(recipe.id)) cookedIds.value = [...cookedIds.value, recipe.id]
-      uni.setStorageSync('cookedRecipeIds', cookedIds.value)
+      recipeStore.markCooked(recipe.id)
       uni.showToast({ title: '已记录为做过', icon: 'none' })
     },
   })
@@ -89,6 +98,8 @@ function showNotice() {
 function showTip() {
   uni.showToast({ title: '计划页可一键添加收藏菜谱', icon: 'none' })
 }
+
+onShow(() => void loadKitchen())
 </script>
 
 <template>
@@ -114,7 +125,17 @@ function showTip() {
       </button>
     </view>
 
-    <view v-if="visibleRecipes.length" class="recipe-list">
+    <view v-if="loading && !visibleRecipes.length" class="empty-state">
+      <text class="empty-state__title">正在同步我的厨房…</text>
+    </view>
+
+    <view v-else-if="(errorMessage || userErrorMessage) && !visibleRecipes.length" class="empty-state">
+      <text class="empty-state__title">暂时没能加载数据</text>
+      <text class="empty-state__copy">{{ errorMessage || userErrorMessage }}</text>
+      <button class="add-recipe" @click="loadKitchen">重新加载</button>
+    </view>
+
+    <view v-else-if="visibleRecipes.length" class="recipe-list">
       <view
         v-for="recipe in visibleRecipes"
         :key="recipe.id"

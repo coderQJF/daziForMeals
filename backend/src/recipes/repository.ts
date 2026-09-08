@@ -1,8 +1,47 @@
 import { categorySeeds, recipeSeeds, statusSeeds, type SeedRecipe } from './seed.js'
-import type { BootstrapPayload, Category, Recipe, RecipeQuery, RecipeRepository } from './types.js'
+import { defaultProfile, planMealSeeds, planReminders, planSummary, takeoutShops } from '../experience/seed.js'
+import type { BootstrapPayload, Category, PlanPayload, Recipe, RecipeQuery, RecipeRepository, UserState, UserStateUpdate } from './types.js'
 
-function createAssetUrl(baseUrl: string, path: string): string {
+export function createAssetUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+}
+
+export function createDefaultUserState(clientId: string, assetBaseUrl: string): UserState {
+  return {
+    clientId,
+    selectedStatus: 'recover',
+    favoriteRecipeIds: [2001, 2002, 2003],
+    likedRecipeIds: [],
+    cookedRecipeIds: [2001],
+    plannedRecipeIds: [],
+    profile: {
+      ...defaultProfile,
+      avatar: createAssetUrl(assetBaseUrl, 'images/user/avatar-female.png'),
+    },
+  }
+}
+
+export function mapPlanPayload(recipes: Recipe[], state: UserState, date: string, assetBaseUrl: string): PlanPayload {
+  const meals = planMealSeeds.map(meal => ({
+    ...meal,
+    dishes: meal.dishes.map(({ imageKey, ...dish }) => ({ ...dish, image: createAssetUrl(assetBaseUrl, imageKey) })),
+  }))
+  const lunch = meals.find(meal => meal.id === 'lunch')
+  if (lunch) {
+    const existingIds = new Set(lunch.dishes.map(dish => dish.id))
+    for (const recipeId of state.plannedRecipeIds) {
+      const recipe = recipes.find(item => item.id === recipeId)
+      if (recipe && !existingIds.has(recipe.id)) {
+        lunch.dishes.push({ id: recipe.id, name: recipe.name, amount: '1份', image: recipe.thumbnail || recipe.cover })
+      }
+    }
+  }
+  return {
+    date,
+    meals,
+    nutrients: planSummary.nutrients.map(item => ({ ...item })),
+    reminders: planReminders.map(item => ({ ...item })),
+  }
 }
 
 export function mapSeedRecipe(seed: SeedRecipe, assetBaseUrl: string): Recipe {
@@ -45,6 +84,15 @@ function matchesQuery(recipe: Recipe, query: RecipeQuery): boolean {
 export function createMemoryRecipeRepository(assetBaseUrl: string): RecipeRepository {
   const recipes = recipeSeeds.map(seed => mapSeedRecipe(seed, assetBaseUrl))
   const categories = categorySeeds.map(category => mapCategory(category, assetBaseUrl))
+  const userStates = new Map<string, UserState>()
+
+  const getState = (clientId: string) => {
+    const existing = userStates.get(clientId)
+    if (existing) return existing
+    const created = createDefaultUserState(clientId, assetBaseUrl)
+    userStates.set(clientId, created)
+    return created
+  }
 
   return {
     async bootstrap(status, offset) {
@@ -70,6 +118,26 @@ export function createMemoryRecipeRepository(assetBaseUrl: string): RecipeReposi
     async findById(id) {
       const recipe = recipes.find(item => item.id === id)
       return recipe ? { ...recipe } : undefined
+    },
+    async getUserState(clientId) {
+      return structuredClone(getState(clientId))
+    },
+    async updateUserState(clientId: string, update: UserStateUpdate) {
+      const current = getState(clientId)
+      const next = {
+        ...current,
+        ...update,
+        clientId,
+        profile: update.profile ? { ...current.profile, ...update.profile } : current.profile,
+      }
+      userStates.set(clientId, next)
+      return structuredClone(next)
+    },
+    async getPlan(clientId, date) {
+      return mapPlanPayload(recipes, getState(clientId), date, assetBaseUrl)
+    },
+    async listTakeout(category) {
+      return takeoutShops.filter(shop => !category || shop.categoryId === category).map(shop => ({ ...shop }))
     },
   }
 }

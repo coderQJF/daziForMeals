@@ -1,25 +1,31 @@
 <script setup lang="ts">
+import { onLoad } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
 import AppTabBar from '@/components/AppTabBar.vue'
-import { planMeals } from '@/mocks/plan'
+import { experienceApi } from '@/services/experience'
+import type { PlanMeal, PlanNutrient, PlanReminder } from '@/types/experience'
 
-const nutrients = [
-  { name: '蛋白质', value: '78 / 100g', progress: 78, color: '#ff7656' },
-  { name: '钙', value: '680 / 1000mg', progress: 68, color: '#ff9c26' },
-  { name: '维生素D', value: '12 / 20μg', progress: 60, color: '#ffc13f' },
-]
+const planMeals = ref<PlanMeal[]>([])
+const nutrients = ref<PlanNutrient[]>([])
+const reminders = ref<PlanReminder[]>([])
+const loading = ref(false)
+const errorMessage = ref('')
+const requestedDate = ref('')
+const calories = computed<Record<string, number>>(() => Object.fromEntries(planMeals.value.map(meal => [meal.id, meal.calories])))
 
-const reminders = [
-  { name: '多喝水', value: '1500~2000ml', icon: '/static/images/plan-detail/water-drop.png', tone: 'blue' },
-  { name: '晒太阳', value: '20~30分钟', icon: '/static/images/plan-detail/sun-reminder.png', tone: 'yellow' },
-  { name: '适度活动', value: '轻度拉伸', icon: '/static/images/plan-detail/activity.png', tone: 'orange' },
-  { name: '按时吃饭', value: '定时定量', icon: '/static/images/plan-detail/meal-bowl.png', tone: 'pink' },
-]
-
-const calories: Record<string, number> = {
-  breakfast: 480,
-  lunch: 590,
-  dinner: 460,
-  snack: 210,
+async function loadDetail() {
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const payload = await experienceApi.getPlan(requestedDate.value || new Date().toISOString().slice(0, 10))
+    planMeals.value = payload.meals
+    nutrients.value = payload.nutrients
+    reminders.value = payload.reminders
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '计划详情加载失败'
+  } finally {
+    loading.value = false
+  }
 }
 
 function goBack() {
@@ -40,6 +46,11 @@ function openMeal(mealId: string) {
 function returnToPlan() {
   uni.switchTab({ url: '/pages/plan/plan' })
 }
+
+onLoad((query) => {
+  requestedDate.value = typeof query?.date === 'string' ? query.date : ''
+  void loadDetail()
+})
 </script>
 
 <template>
@@ -54,6 +65,12 @@ function returnToPlan() {
       <button class="nav-button" aria-label="分享" @click="sharePlan">
         <image class="nav-button__icon" src="/static/images/plan-detail/share.png" mode="aspectFit" />
       </button>
+    </view>
+
+    <view v-if="loading" class="api-state">正在同步计划详情…</view>
+    <view v-else-if="errorMessage" class="api-state">
+      <text>{{ errorMessage }}</text>
+      <button @click="loadDetail">重新加载</button>
     </view>
 
     <view class="goal-heading">
@@ -151,6 +168,26 @@ function returnToPlan() {
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 232, 201, 0.62) 0%, rgba(255, 244, 230, 0.2) 55%, transparent 74%);
   pointer-events: none;
+}
+
+.api-state {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 96rpx;
+  margin-top: 14rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 18rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  color: #8d8580;
+  font-size: 24rpx;
+}
+
+.api-state button {
+  color: #ff7818;
+  font-size: 24rpx;
 }
 
 .nav-bar,

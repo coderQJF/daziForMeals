@@ -50,3 +50,42 @@ test('GET /api/v1/recipes supports category filters and detail lookup', async ()
   assert.equal(detailResponse.json().data.ingredients.length, 7)
   await app.close()
 })
+
+test('user state is isolated by client id and persists interactions', async () => {
+  const app = buildApp({ logger: false })
+  const headers = { 'x-client-id': 'test-client-001' }
+  const initial = await app.inject({ method: 'GET', url: '/api/v1/me', headers })
+  assert.equal(initial.statusCode, 200)
+  assert.deepEqual(initial.json().data.favoriteRecipeIds, [2001, 2002, 2003])
+
+  const updated = await app.inject({
+    method: 'PUT',
+    url: '/api/v1/me',
+    headers,
+    payload: { favoriteRecipeIds: [1001], cookedRecipeIds: [1001, 2001], selectedStatus: 'normal' },
+  })
+  assert.equal(updated.statusCode, 200)
+  assert.equal(updated.json().data.stats.favorites, 1)
+  assert.equal(updated.json().data.stats.cooked, 2)
+  assert.equal(updated.json().data.selectedStatus, 'normal')
+
+  const other = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { 'x-client-id': 'test-client-002' } })
+  assert.equal(other.json().data.selectedStatus, 'recover')
+  await app.close()
+})
+
+test('plan and takeout pages receive API-backed data', async () => {
+  const app = buildApp({ logger: false })
+  const headers = { 'x-client-id': 'test-client-plan' }
+  await app.inject({ method: 'PUT', url: '/api/v1/me', headers, payload: { plannedRecipeIds: [2003] } })
+
+  const plan = await app.inject({ method: 'GET', url: '/api/v1/plan?date=2026-09-08', headers })
+  assert.equal(plan.statusCode, 200)
+  assert.equal(plan.json().data.date, '2026-09-08')
+  assert.ok(plan.json().data.meals.find((meal: { id: string }) => meal.id === 'lunch').dishes.some((dish: { id: number }) => dish.id === 2003))
+
+  const takeout = await app.inject({ method: 'GET', url: '/api/v1/takeout?category=hot-pot' })
+  assert.equal(takeout.statusCode, 200)
+  assert.ok(takeout.json().data.every((shop: { categoryId: string }) => shop.categoryId === 'hot-pot'))
+  await app.close()
+})

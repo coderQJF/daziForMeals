@@ -43,6 +43,11 @@ export const statusSeeds: StatusOption[] = [
   { id: 'rainy', name: '下雨天', icon: '🌧️' },
   { id: 'lazy', name: '犯懒', icon: '😴' },
   { id: 'appetite', name: '没胃口', icon: '😟' },
+  { id: 'cold', name: '感冒发烧', icon: '🤒' },
+  { id: 'stress', name: '压力很大', icon: '😣' },
+  { id: 'light', name: '清淡饮食', icon: '🥬' },
+  { id: 'energy', name: '需要补能', icon: '⚡' },
+  { id: 'normal', name: '状态不错', icon: '😊' },
 ]
 
 export const recipeSeeds: SeedRecipe[] = [

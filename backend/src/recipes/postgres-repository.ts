@@ -1,7 +1,8 @@
 import pg from 'pg'
 import { categorySeeds, recipeSeeds, statusSeeds } from './seed.js'
-import { mapCategory, mapSeedRecipe } from './repository.js'
-import type { BootstrapPayload, Category, Recipe, RecipeQuery, RecipeRepository, StatusOption } from './types.js'
+import { takeoutShops } from '../experience/seed.js'
+import { createDefaultUserState, mapCategory, mapPlanPayload, mapSeedRecipe } from './repository.js'
+import type { BootstrapPayload, Category, Recipe, RecipeQuery, RecipeRepository, StatusOption, UserState, UserStateUpdate } from './types.js'
 
 const { Pool } = pg
 
@@ -16,6 +17,13 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
       sort_order INTEGER NOT NULL DEFAULT 0,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (content_type, content_id)
+    )
+  `)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fandazi_user_state (
+      client_id TEXT PRIMARY KEY,
+      payload JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
 
@@ -58,6 +66,18 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
     .filter(row => row.content_type === 'status')
     .map(row => row.payload as StatusOption)
 
+  async function getOrCreateUserState(clientId: string): Promise<UserState> {
+    const initial = createDefaultUserState(clientId, assetBaseUrl)
+    const result = await pool.query<{ payload: UserState }>(
+      `INSERT INTO fandazi_user_state (client_id, payload)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (client_id) DO UPDATE SET client_id = EXCLUDED.client_id
+       RETURNING payload`,
+      [clientId, JSON.stringify(initial)],
+    )
+    return result.rows[0]?.payload ?? initial
+  }
+
   return {
     async bootstrap(status, offset): Promise<BootstrapPayload> {
       const matches = recipes.filter(recipe => recipe.statusIds.includes(status))
@@ -77,6 +97,32 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
     },
     async findById(id: number): Promise<Recipe | undefined> {
       return recipes.find(recipe => recipe.id === id)
+    },
+    async getUserState(clientId) {
+      return getOrCreateUserState(clientId)
+    },
+    async updateUserState(clientId: string, update: UserStateUpdate) {
+      const current = await getOrCreateUserState(clientId)
+      const next: UserState = {
+        ...current,
+        ...update,
+        clientId,
+        profile: update.profile ? { ...current.profile, ...update.profile } : current.profile,
+      }
+      const result = await pool.query<{ payload: UserState }>(
+        `UPDATE fandazi_user_state
+         SET payload = $2::jsonb, updated_at = NOW()
+         WHERE client_id = $1
+         RETURNING payload`,
+        [clientId, JSON.stringify(next)],
+      )
+      return result.rows[0]?.payload ?? next
+    },
+    async getPlan(clientId, date) {
+      return mapPlanPayload(recipes, await getOrCreateUserState(clientId), date, assetBaseUrl)
+    },
+    async listTakeout(category) {
+      return takeoutShops.filter(shop => !category || shop.categoryId === category).map(shop => ({ ...shop }))
     },
     async close() {
       await pool.end()

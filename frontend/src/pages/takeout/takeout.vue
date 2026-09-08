@@ -1,25 +1,59 @@
 <script setup lang="ts">
-const shops = [
-  { name: '小龙坎火锅（科技园店）', score: '4.8', distance: '1.2km', time: '30分钟送达' },
-  { name: '海底捞火锅（后海店）', score: '4.9', distance: '1.6km', time: '30分钟送达' },
-  { name: '呷哺呷哺（南山店）', score: '4.6', distance: '2.0km', time: '40分钟送达' },
+import { onLoad } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
+import { experienceApi } from '@/services/experience'
+import type { TakeoutShop } from '@/types/experience'
+
+const categories = [
+  { id: 'hot-pot', name: '火锅', emoji: '🍲' },
+  { id: 'noodles', name: '面食', emoji: '🍜' },
+  { id: 'light-meal', name: '轻食', emoji: '🥗' },
+  { id: 'fried-chicken', name: '炸鸡', emoji: '🍗' },
+  { id: 'japanese', name: '日料', emoji: '🍣' },
 ]
+const activeCategory = ref('hot-pot')
+const shops = ref<TakeoutShop[]>([])
+const loading = ref(false)
+const errorMessage = ref('')
+const activeCategoryInfo = computed(() => categories.find(item => item.id === activeCategory.value) ?? categories[0])
+
+async function loadShops(category = activeCategory.value) {
+  activeCategory.value = category
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    shops.value = await experienceApi.getTakeout(category)
+  } catch (error) {
+    shops.value = []
+    errorMessage.value = error instanceof Error ? error.message : '外卖商家加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+onLoad((query) => {
+  const requested = typeof query?.category === 'string' ? query.category : ''
+  void loadShops(categories.some(item => item.id === requested) ? requested : 'hot-pot')
+})
 </script>
 
 <template>
   <view class="takeout">
     <view class="tabs">
-      <text class="active">火锅</text><text>面食</text><text>轻食</text><text>炒菜</text><text>粥</text>
+      <text v-for="item in categories" :key="item.id" :class="{ active: activeCategory === item.id }" @click="loadShops(item.id)">{{ item.name }}</text>
     </view>
     <view class="hero">
-      <view><text class="badge">火锅推荐</text><text class="hero__title">冬日暖心火锅</text><text class="hero__desc">热气腾腾，幸福加倍</text></view>
-      <text class="hero__emoji">🍲</text>
+      <view><text class="badge">{{ activeCategoryInfo?.name }}推荐</text><text class="hero__title">今天吃点{{ activeCategoryInfo?.name }}</text><text class="hero__desc">省心选择，好好吃饭</text></view>
+      <text class="hero__emoji">{{ activeCategoryInfo?.emoji }}</text>
     </view>
     <view class="section-title">附近商家</view>
-    <view class="shops">
-      <view v-for="shop in shops" :key="shop.name" class="shop surface-card">
+    <view v-if="loading" class="api-state">正在加载附近商家…</view>
+    <view v-else-if="errorMessage" class="api-state" @click="loadShops()">{{ errorMessage }}，点击重试</view>
+    <view v-else-if="!shops.length" class="api-state">附近暂时没有这类商家</view>
+    <view v-else class="shops">
+      <view v-for="shop in shops" :key="shop.id" class="shop surface-card">
         <view class="shop__logo">锅</view>
-        <view class="shop__copy"><text class="shop__name">{{ shop.name }}</text><text class="shop__meta">★ {{ shop.score }}　{{ shop.time }}　{{ shop.distance }}</text><text class="shop__promo">满69减15　支持自取</text></view>
+        <view class="shop__copy"><text class="shop__name">{{ shop.name }}</text><text class="shop__meta">★ {{ shop.score }}　{{ shop.deliveryTime }}　{{ shop.distance }}</text><text class="shop__promo">{{ shop.promotion }}</text></view>
         <text class="heart">♡</text>
       </view>
     </view>
@@ -40,6 +74,7 @@ const shops = [
 .hero__desc { margin-top: 10rpx; color: $color-text-secondary; font-size: 24rpx; }
 .hero__emoji { font-size: 116rpx; }
 .section-title { margin: 34rpx 0 18rpx; }
+.api-state { padding: 48rpx 24rpx; border-radius: 24rpx; background: #fff; color: $color-text-secondary; font-size: 24rpx; text-align: center; }
 .shops { display: flex; flex-direction: column; gap: 16rpx; }
 .shop { display: flex; padding: 22rpx; align-items: center; }
 .shop__logo { display: flex; width: 90rpx; height: 90rpx; align-items: center; justify-content: center; color: white; border-radius: 20rpx; background: $color-primary; font-size: 30rpx; font-weight: 700; }
