@@ -2,6 +2,7 @@
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import AppHeader from '@/components/AppHeader.vue'
 import AppTabBar from '@/components/AppTabBar.vue'
 import { useRecipeStore } from '@/stores/recipe'
 import type { Recipe } from '@/types/recipe'
@@ -69,11 +70,7 @@ watch([keyword, activeFilter], () => {
   <view class="list-page">
     <view class="list-page__glow" />
 
-    <view class="nav-row">
-      <button class="back-button" aria-label="返回分类" @click="goBack">‹</button>
-      <text class="nav-title">{{ pageTitle }}</text>
-      <view class="nav-spacer" />
-    </view>
+    <AppHeader :title="pageTitle" :show-back="true" :page-padding="28" @back="goBack" />
 
     <view class="search-box">
       <view class="search-icon" />
@@ -150,7 +147,7 @@ watch([keyword, activeFilter], () => {
 .list-page {
   position: relative;
   min-height: 100vh;
-  padding: calc(var(--status-bar-height) + 18rpx) 28rpx calc(env(safe-area-inset-bottom) + 174rpx);
+  padding: 0 28rpx calc(env(safe-area-inset-bottom) + 174rpx);
   overflow-x: hidden;
   background: $color-page;
 }
@@ -166,33 +163,12 @@ watch([keyword, activeFilter], () => {
   pointer-events: none;
 }
 
-.nav-row {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  height: 82rpx;
-  align-items: center;
-  grid-template-columns: 72rpx 1fr 72rpx;
-}
-
-.back-button {
-  color: $color-text;
-  font-size: 58rpx;
-  line-height: 72rpx;
-  text-align: left;
-}
-
-.nav-title {
-  font-size: 36rpx;
-  font-weight: 800;
-  text-align: center;
-}
-
 .search-box {
   position: relative;
   z-index: 1;
   display: flex;
   height: 82rpx;
+  margin-top: 18rpx;
   padding: 0 24rpx;
   align-items: center;
   border-radius: 26rpx;
@@ -233,24 +209,28 @@ watch([keyword, activeFilter], () => {
   position: relative;
   z-index: 1;
   display: flex;
-  height: 86rpx;
+  height: 82rpx;
   align-items: center;
   border-bottom: 1rpx solid $color-line;
-  gap: 34rpx;
+  gap: 28rpx;
 }
 
 .filter-button {
   position: relative;
-  height: 86rpx;
+  height: 82rpx;
+  margin: 0;
+  padding: 0 4rpx;
+  flex: 0 0 auto;
   color: $color-text-secondary;
   font-size: 26rpx;
+  line-height: 82rpx;
 }
 
 .filter-button--active { color: $color-text; font-weight: 800; }
 .filter-button--active::after {
   position: absolute;
   right: 4rpx;
-  bottom: 4rpx;
+  bottom: 0;
   left: 4rpx;
   height: 5rpx;
   border-radius: 5rpx;
@@ -258,7 +238,15 @@ watch([keyword, activeFilter], () => {
   content: '';
 }
 
-.filter-sort { margin-left: auto; color: $color-text-secondary; font-size: 25rpx; }
+.filter-sort {
+  display: flex;
+  height: 82rpx;
+  margin-left: auto;
+  align-items: center;
+  color: $color-text-secondary;
+  font-size: 25rpx;
+  white-space: nowrap;
+}
 .recipe-list { position: relative; z-index: 1; padding-top: 10rpx; }
 
 .recipe-row {

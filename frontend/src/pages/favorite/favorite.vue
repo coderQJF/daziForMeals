@@ -271,19 +271,22 @@ onShow(() => void loadKitchen())
 
 .kitchen-tabs {
   display: flex;
-  height: 88rpx;
-  align-items: flex-end;
-  gap: 64rpx;
+  height: 80rpx;
+  align-items: stretch;
+  gap: 44rpx;
   border-bottom: 1rpx solid rgba(77, 55, 40, 0.09);
 }
 
 .kitchen-tab {
   position: relative;
-  height: 78rpx;
-  padding: 0 10rpx;
+  height: 80rpx;
+  margin: 0;
+  padding: 0 12rpx;
+  flex: 0 0 auto;
   color: #6e6965;
-  font-size: 29rpx;
+  font-size: 28rpx;
   font-weight: 550;
+  line-height: 80rpx;
 }
 
 .kitchen-tab--active {
@@ -293,10 +296,10 @@ onShow(() => void loadKitchen())
 
 .kitchen-tab--active::after {
   position: absolute;
-  right: 10rpx;
+  right: 18rpx;
   bottom: 0;
-  left: 10rpx;
-  height: 5rpx;
+  left: 18rpx;
+  height: 4rpx;
   border-radius: 999rpx;
   background: linear-gradient(90deg, #ff971e, #ff6800);
   content: '';

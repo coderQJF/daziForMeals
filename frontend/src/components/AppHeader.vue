@@ -42,7 +42,9 @@ onMounted(() => {
 <template>
   <view class="app-header" :style="capsuleStyle">
     <view class="app-header__row">
-      <button v-if="showBack" class="app-header__back" aria-label="返回" @click="emit('back')">‹</button>
+      <button v-if="showBack" class="app-header__back" aria-label="返回" @click="emit('back')">
+        <view class="app-header__back-icon" />
+      </button>
       <view class="app-header__copy">
         <text class="app-header__title">{{ title }}</text>
         <slot name="subtitle">
@@ -92,13 +94,21 @@ onMounted(() => {
   display: flex;
   width: 64rpx;
   height: 64rpx;
-  margin-right: 12rpx;
+  margin: 0 12rpx 0 0;
+  padding: 0;
   flex: 0 0 64rpx;
   align-items: center;
   justify-content: center;
-  color: $color-text;
-  font-size: 54rpx;
-  line-height: 1;
+}
+
+.app-header__back-icon {
+  width: 22rpx;
+  height: 22rpx;
+  margin-left: 8rpx;
+  border-bottom: 5rpx solid $color-text;
+  border-left: 5rpx solid $color-text;
+  border-radius: 2rpx;
+  transform: rotate(45deg);
 }
 
 .app-header__title {
