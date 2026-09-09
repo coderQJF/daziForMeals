@@ -127,12 +127,6 @@
         "selectedIconPath": "static/tabbar/plan-active.png"
       },
       {
-        "pagePath": "pages/favorite/favorite",
-        "text": "收藏",
-        "iconPath": "static/tabbar/favorite.png",
-        "selectedIconPath": "static/tabbar/favorite-active.png"
-      },
-      {
         "pagePath": "pages/user/user",
         "text": "我的",
         "iconPath": "static/tabbar/user.png",

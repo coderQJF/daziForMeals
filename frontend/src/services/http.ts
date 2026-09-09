@@ -75,6 +75,38 @@ export function apiRequest<T>(method: 'GET' | 'POST' | 'PUT', path: string, data
 }
 
 export function apiUpload<T>(path: string, filePath: string, name = 'file'): Promise<T> {
+  // #ifdef MP-WEIXIN
+  return new Promise((resolve, reject) => {
+    interface FileReadResult { data: string | ArrayBuffer }
+    interface MiniAppFileSystemManager {
+      readFile(options: {
+        filePath: string
+        encoding: 'base64'
+        success: (result: FileReadResult) => void
+        fail: (error: UniApp.GeneralCallbackResult) => void
+      }): void
+    }
+    interface MiniAppUni { getFileSystemManager(): MiniAppFileSystemManager }
+
+    const fileSystem = (uni as unknown as MiniAppUni).getFileSystemManager()
+    fileSystem.readFile({
+      filePath,
+      encoding: 'base64',
+      success(result) {
+        if (typeof result.data !== 'string') {
+          reject(new ApiError('头像读取失败'))
+          return
+        }
+        apiRequest<T>('POST', `${path}/base64`, { content: result.data }).then(resolve, reject)
+      },
+      fail(error) {
+        reject(new ApiError(error.errMsg || '头像读取失败'))
+      },
+    })
+  })
+  // #endif
+
+  // #ifndef MP-WEIXIN
   return new Promise((resolve, reject) => {
     uni.uploadFile({
       url: `${API_BASE_URL}${path}`,
@@ -102,6 +134,7 @@ export function apiUpload<T>(path: string, filePath: string, name = 'file'): Pro
       },
     })
   })
+  // #endif
 }
 
 export function apiGet<T>(path: string, data?: Record<string, string | number>): Promise<T> {

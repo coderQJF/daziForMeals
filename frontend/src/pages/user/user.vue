@@ -33,7 +33,7 @@ const recipeStore = useRecipeStore()
 const { profile, userStats, userLoading, userErrorMessage } = storeToRefs(recipeStore)
 const avatarLoadFailed = ref(false)
 
-useTabBarSelection(4)
+useTabBarSelection(3)
 
 function showNotice() {
   uni.showToast({ title: '暂时没有新消息', icon: 'none' })
@@ -44,7 +44,7 @@ function editProfile() {
 }
 
 function openFavorite() {
-  uni.switchTab({ url: '/pages/favorite/favorite' })
+  uni.navigateTo({ url: '/pages/favorite/favorite' })
 }
 
 function handleMenu(item: MenuItem) {
@@ -149,7 +149,7 @@ onShow(() => {
     </view>
 
     <!-- #ifndef MP-WEIXIN -->
-    <AppTabBar :selected="4" />
+    <AppTabBar :selected="3" />
     <!-- #endif -->
   </view>
 </template>

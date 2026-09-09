@@ -233,6 +233,15 @@ test('authenticated users can upload and retrieve a persistent avatar', async ()
     assert.equal(downloaded.headers['content-type'], 'image/png')
     assert.deepEqual([...downloaded.rawPayload], [...image])
 
+    const base64Upload = await app.inject({
+      method: 'POST',
+      url: '/api/v1/me/avatar/base64',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { content: Buffer.from(image).toString('base64') },
+    })
+    assert.equal(base64Upload.statusCode, 200, base64Upload.body)
+    assert.equal(base64Upload.json().data.profile.avatar, avatarUrl)
+
     const unauthenticated = await app.inject({
       method: 'POST',
       url: '/api/v1/me/avatar',

@@ -2,9 +2,7 @@
 import { onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
-import AppTabBar from '@/components/AppTabBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
-import { useTabBarSelection } from '@/composables/useTabBarSelection'
 import { useRecipeStore } from '@/stores/recipe'
 
 type KitchenTab = 'favorite' | 'cooked'
@@ -48,7 +46,10 @@ async function loadKitchen() {
   }
 }
 
-useTabBarSelection(3)
+function goBack() {
+  if (getCurrentPages().length > 1) uni.navigateBack()
+  else uni.switchTab({ url: '/pages/user/user' })
+}
 
 function switchTab(tab: KitchenTab) {
   activeTab.value = tab
@@ -106,7 +107,7 @@ onShow(() => void loadKitchen())
   <view class="favorite-page">
     <view class="favorite-page__glow" />
 
-    <AppHeader title="我的厨房" action-icon="/static/images/favorite/notification-bell.png" action-label="查看消息" @action="showNotice" />
+    <AppHeader title="我的厨房" :show-back="true" action-icon="/static/images/favorite/notification-bell.png" action-label="查看消息" @back="goBack" @action="showNotice" />
 
     <view class="kitchen-tabs">
       <button
@@ -207,9 +208,6 @@ onShow(() => void loadKitchen())
       <text class="kitchen-tip__chevron">›</text>
     </button>
 
-    <!-- #ifndef MP-WEIXIN -->
-    <AppTabBar :selected="3" />
-    <!-- #endif -->
   </view>
 </template>
 

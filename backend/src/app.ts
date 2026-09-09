@@ -121,6 +121,21 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     trustProxy: true,
   })
 
+  async function persistAvatar(clientId: string, buffer: Uint8Array<ArrayBuffer>, extension: 'jpg' | 'png') {
+    const filename = `${createHash('sha256').update(buffer).digest('hex')}.${extension}`
+    await mkdir(avatarStorageDir, { recursive: true })
+    await writeFile(join(avatarStorageDir, filename), buffer, { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EEXIST') throw error
+    })
+    const state = await repository.updateUserState(clientId, {
+      profile: {
+        ...(await repository.getUserState(clientId)).profile,
+        avatar: `${publicApiBaseUrl}/api/v1/avatars/${filename}`,
+      },
+    })
+    return toDashboard(state)
+  }
+
   void app.register(cors, {
     origin: serverConfig.corsOrigins,
   })
@@ -256,18 +271,26 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (!imageType) {
       return reply.code(415).send({ error: { code: 'INVALID_AVATAR_TYPE', message: '头像仅支持 JPG 或 PNG 格式' } })
     }
-    const filename = `${createHash('sha256').update(buffer).digest('hex')}.${imageType.extension}`
-    await mkdir(avatarStorageDir, { recursive: true })
-    await writeFile(join(avatarStorageDir, filename), buffer, { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'EEXIST') throw error
-    })
-    const state = await repository.updateUserState(clientId, {
-      profile: {
-        ...(await repository.getUserState(clientId)).profile,
-        avatar: `${publicApiBaseUrl}/api/v1/avatars/${filename}`,
-      },
-    })
-    return { data: toDashboard(state) }
+    return { data: await persistAvatar(clientId, buffer, imageType.extension) }
+  })
+
+  app.post('/api/v1/me/avatar/base64', { bodyLimit: 3 * 1024 * 1024 }, async (request, reply) => {
+    const clientId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const body = request.body as { content?: unknown } | undefined
+    const content = body?.content
+    const maximumBase64Length = Math.ceil((2 * 1024 * 1024) * 4 / 3) + 4
+    if (typeof content !== 'string' || !content || content.length > maximumBase64Length || !/^[A-Za-z0-9+/]+={0,2}$/.test(content)) {
+      return reply.code(400).send({ error: { code: 'INVALID_AVATAR_DATA', message: '头像数据无效' } })
+    }
+    const buffer = new Uint8Array(Buffer.from(content, 'base64'))
+    if (buffer.byteLength > 2 * 1024 * 1024) {
+      return reply.code(413).send({ error: { code: 'AVATAR_TOO_LARGE', message: '头像大小不能超过 2MB' } })
+    }
+    const imageType = detectAvatarType(buffer)
+    if (!imageType) {
+      return reply.code(415).send({ error: { code: 'INVALID_AVATAR_TYPE', message: '头像仅支持 JPG 或 PNG 格式' } })
+    }
+    return { data: await persistAvatar(clientId, buffer, imageType.extension) }
   })
 
   app.get('/api/v1/me', async (request) => {

@@ -7,8 +7,7 @@
 | 首页 | `/pages/index/index` | 0 |
 | 分类 | `/pages/category/category` | 1 |
 | 计划 | `/pages/plan/plan` | 2 |
-| 收藏 | `/pages/favorite/favorite` | 3 |
-| 我的 | `/pages/user/user` | 4 |
+| 我的 | `/pages/user/user` | 3 |
 
 ## Subpages
 
@@ -21,6 +20,7 @@
 | 外卖推荐 | `/pages/takeout/takeout` | May read takeout category |
 | 登录 | `/pages/login/login` | Basic authentication entry |
 | 身体状态 | `/pages/status/status` | Updates shared recommendation status |
+| 收藏/厨房 | `/pages/favorite/favorite` | Entered from profile stats or “我的厨房” |
 
 ## Key contracts
 

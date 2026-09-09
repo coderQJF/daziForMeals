@@ -9,7 +9,7 @@ import { useTabBarSelection } from '@/composables/useTabBarSelection'
 import type { CategoryItem } from '@/types/recipe'
 
 const recipeStore = useRecipeStore()
-const { recommendation, selectedStatus, statusLabel, quickCategories, statusOptions, loading, errorMessage } = storeToRefs(recipeStore)
+const { recommendation, blindBoxRecipe, selectedStatus, statusLabel, quickCategories, statusOptions, loading, errorMessage } = storeToRefs(recipeStore)
 const blindBoxOpen = ref(false)
 const blindBoxStage = ref<'rolling' | 'result'>('rolling')
 let blindBoxDelay: ReturnType<typeof setTimeout> | undefined
@@ -66,7 +66,7 @@ async function openBlindBox() {
 
   try {
     await Promise.all([
-      recipeStore.refreshRecommendation(),
+      recipeStore.drawBlindBoxRecipe(),
       waitForBlindBoxRoll(),
     ])
     blindBoxStage.value = 'result'
@@ -83,7 +83,9 @@ function closeBlindBox() {
 
 function openBlindBoxRecipe() {
   blindBoxOpen.value = false
-  openRecipe()
+  if (blindBoxRecipe.value.id) {
+    uni.navigateTo({ url: `/pages/recipe/detail?id=${blindBoxRecipe.value.id}` })
+  }
 }
 
 async function selectStatus(status: string) {
@@ -208,13 +210,13 @@ onUnmounted(() => {
         <view class="blind-result__spark blind-result__spark--left">✦</view>
         <view class="blind-result__spark blind-result__spark--right">✦</view>
         <text class="blind-result__eyebrow">今天就吃这个吧</text>
-        <image class="blind-result__cover" :src="recommendation.cover" mode="aspectFill" />
-        <text class="blind-result__name">{{ recommendation.name }}</text>
-        <text class="blind-result__reason">{{ recommendation.reason }}</text>
+        <image class="blind-result__cover" :src="blindBoxRecipe.cover" mode="aspectFill" />
+        <text class="blind-result__name">{{ blindBoxRecipe.name }}</text>
+        <text class="blind-result__reason">{{ blindBoxRecipe.reason }}</text>
         <view class="blind-result__meta">
-          <text>{{ recommendation.cookTime }} 分钟</text>
-          <text>{{ recommendation.difficulty }}</text>
-          <text>约 {{ recommendation.calories }} kcal</text>
+          <text>{{ blindBoxRecipe.cookTime }} 分钟</text>
+          <text>{{ blindBoxRecipe.difficulty }}</text>
+          <text>约 {{ blindBoxRecipe.calories }} kcal</text>
         </view>
         <button class="blind-result__action" @click="openBlindBoxRecipe">看看怎么做</button>
         <button class="blind-result__again" @click="openBlindBox">再摇一次</button>

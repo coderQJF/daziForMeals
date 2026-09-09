@@ -33,6 +33,7 @@ const emptyRecipe: RecipeDetail = {
 export const useRecipeStore = defineStore('recipe', () => {
   const selectedStatus = ref('recover')
   const recommendation = ref<RecipeDetail>({ ...emptyRecipe })
+  const blindBoxRecipe = ref<RecipeDetail>({ ...emptyRecipe })
   const recipes = ref<RecipeDetail[]>([])
   const quickCategories = ref<CategoryItem[]>([])
   const cookingCategories = ref<CategoryItem[]>([])
@@ -72,6 +73,7 @@ export const useRecipeStore = defineStore('recipe', () => {
     plannedRecipeIds.value = state.plannedRecipeIds
     profile.value = state.profile
     recommendation.value = withLocalState(recommendation.value)
+    blindBoxRecipe.value = withLocalState(blindBoxRecipe.value)
     recipes.value = recipes.value.map(withLocalState)
   }
 
@@ -255,6 +257,25 @@ export const useRecipeStore = defineStore('recipe', () => {
     }
   }
 
+  async function drawBlindBoxRecipe() {
+    errorMessage.value = ''
+    try {
+      const excludedIds = [
+        recommendation.value.id,
+        ...recentRecommendationIds.value,
+      ].filter((id, index, ids) => id > 0 && ids.indexOf(id) === index)
+      blindBoxRecipe.value = withLocalState(await recipeApi.getRandomRecipe(
+        selectedStatus.value,
+        excludedIds,
+      ))
+      rememberRecommendation(blindBoxRecipe.value.id)
+      return blindBoxRecipe.value
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : '随机菜谱获取失败'
+      throw error
+    }
+  }
+
   watch(favoriteIds, value => uni.setStorageSync('favoriteRecipeIds', value), { deep: true })
   watch(plannedRecipeIds, value => uni.setStorageSync('plannedRecipeIds', value), { deep: true })
   watch(cookedRecipeIds, value => uni.setStorageSync('cookedRecipeIds', value), { deep: true })
@@ -265,6 +286,7 @@ export const useRecipeStore = defineStore('recipe', () => {
   return {
     selectedStatus,
     recommendation,
+    blindBoxRecipe,
     recipes,
     quickCategories,
     cookingCategories,
@@ -302,5 +324,6 @@ export const useRecipeStore = defineStore('recipe', () => {
     toggleLike,
     selectRecommendation,
     refreshRecommendation,
+    drawBlindBoxRecipe,
   }
 })

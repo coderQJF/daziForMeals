@@ -7,7 +7,6 @@ const items = [
   { path: '/pages/index/index', text: '首页', icon: '/static/tabbar/home.png', activeIcon: '/static/tabbar/home-active.png' },
   { path: '/pages/category/category', text: '分类', icon: '/static/tabbar/category.png', activeIcon: '/static/tabbar/category-active.png' },
   { path: '/pages/plan/plan', text: '计划', icon: '/static/tabbar/plan.png', activeIcon: '/static/tabbar/plan-active.png' },
-  { path: '/pages/favorite/favorite', text: '收藏', icon: '/static/tabbar/favorite.png', activeIcon: '/static/tabbar/favorite-active.png' },
   { path: '/pages/user/user', text: '我的', icon: '/static/tabbar/user.png', activeIcon: '/static/tabbar/user-active.png' },
 ]
 
@@ -43,7 +42,7 @@ function switchTab(index: number, path: string) {
   position: fixed;
   z-index: 9999;
   right: 16rpx;
-  bottom: calc(env(safe-area-inset-bottom) + 10rpx);
+  bottom: calc(env(safe-area-inset-bottom) + 28rpx);
   left: 16rpx;
   display: flex;
   height: 112rpx;
@@ -59,10 +58,10 @@ function switchTab(index: number, path: string) {
 .app-tabbar__item {
   position: relative;
   display: flex;
-  width: 20%;
+  width: 25%;
   min-width: 0;
   height: 108rpx;
-  flex: 0 0 20%;
+  flex: 0 0 25%;
   flex-direction: column;
   align-items: center;
   justify-content: center;
