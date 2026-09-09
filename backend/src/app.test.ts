@@ -45,7 +45,7 @@ test('GET /api/v1/bootstrap returns API-backed home content', async () => {
   const payload = response.json()
 
   assert.equal(response.statusCode, 200)
-  assert.equal(payload.data.recommendation.id, 1001)
+  assert.ok(payload.data.recommendation.statusIds.includes('recover'))
   assert.match(payload.data.recommendation.cover, /^https:\/\/img\.coder-f-nowork\.cn\/static\/images\//)
   assert.ok(payload.data.cookingCategories.length > 0)
   assert.ok(payload.data.statusOptions.length > 0)
@@ -57,11 +57,29 @@ test('GET /api/v1/recipes supports category filters and detail lookup', async ()
   const listResponse = await app.inject({ method: 'GET', url: '/api/v1/recipes?category=quick' })
   const listPayload = listResponse.json()
   assert.equal(listResponse.statusCode, 200)
-  assert.ok(listPayload.data.every((recipe: { categoryId: string }) => recipe.categoryId === 'quick'))
+  assert.ok(listPayload.data.every((recipe: { categoryIds: string[] }) => recipe.categoryIds.includes('quick')))
+  assert.ok(listPayload.data.length > 5)
 
   const detailResponse = await app.inject({ method: 'GET', url: '/api/v1/recipes/1001' })
   assert.equal(detailResponse.statusCode, 200)
   assert.equal(detailResponse.json().data.ingredients.length, 7)
+  await app.close()
+})
+
+test('random recipes use status tags and avoid recent repeats', async () => {
+  const app = buildApp({ logger: false })
+  const headers = { 'x-client-id': 'random-client-001' }
+  const ids: number[] = []
+
+  for (let index = 0; index < 4; index += 1) {
+    const response = await app.inject({ method: 'GET', url: '/api/v1/recipes/random?status=fitness', headers })
+    assert.equal(response.statusCode, 200)
+    const recipe = response.json().data
+    assert.ok(recipe.statusIds.includes('fitness'))
+    ids.push(recipe.id)
+  }
+
+  assert.equal(new Set(ids).size, ids.length)
   await app.close()
 })
 
@@ -97,10 +115,15 @@ test('plan and takeout pages receive API-backed data', async () => {
   assert.equal(plan.statusCode, 200)
   assert.equal(plan.json().data.date, '2026-09-08')
   assert.ok(plan.json().data.meals.find((meal: { id: string }) => meal.id === 'lunch').dishes.some((dish: { id: number }) => dish.id === 2003))
+  const catalog = await app.inject({ method: 'GET', url: '/api/v1/recipes?limit=100' })
+  const recipeIds = new Set(catalog.json().data.map((recipe: { id: number }) => recipe.id))
+  const plannedDishes = plan.json().data.meals.flatMap((meal: { dishes: Array<{ id: number }> }) => meal.dishes)
+  assert.ok(plannedDishes.every((dish: { id: number }) => recipeIds.has(dish.id)))
 
   const takeout = await app.inject({ method: 'GET', url: '/api/v1/takeout?category=hot-pot' })
   assert.equal(takeout.statusCode, 200)
   assert.ok(takeout.json().data.every((shop: { categoryId: string }) => shop.categoryId === 'hot-pot'))
+  assert.ok(takeout.json().data.every((shop: { tagIds: string[] }) => shop.tagIds.length > 0))
   await app.close()
 })
 

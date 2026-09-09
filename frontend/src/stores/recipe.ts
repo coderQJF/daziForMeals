@@ -23,6 +23,9 @@ const emptyRecipe: RecipeDetail = {
   servings: 0,
   difficulty: '简单',
   isFavorite: false,
+  categoryIds: [],
+  tagIds: [],
+  taggings: [],
   ingredients: [],
   steps: [],
 }
@@ -35,7 +38,7 @@ export const useRecipeStore = defineStore('recipe', () => {
   const cookingCategories = ref<CategoryItem[]>([])
   const takeoutCategories = ref<CategoryItem[]>([])
   const statusOptions = ref<StatusOption[]>([])
-  const refreshCount = ref(0)
+  const recentRecommendationIds = ref<number[]>(uni.getStorageSync('recentRecommendationIds') || [])
   const bootstrapLoaded = ref(false)
   const loading = ref(false)
   const errorMessage = ref('')
@@ -115,18 +118,27 @@ export const useRecipeStore = defineStore('recipe', () => {
     return { ...recipe, isFavorite: favoriteIds.value.includes(recipe.id) }
   }
 
+  function rememberRecommendation(recipeId: number) {
+    if (!recipeId) return
+    recentRecommendationIds.value = [
+      recipeId,
+      ...recentRecommendationIds.value.filter(id => id !== recipeId),
+    ].slice(0, 8)
+  }
+
   async function loadBootstrap(force = false) {
     if (loading.value || (bootstrapLoaded.value && !force)) return
     await loadUserState(force)
     loading.value = true
     errorMessage.value = ''
     try {
-      const payload = await recipeApi.getBootstrap(selectedStatus.value, refreshCount.value)
+      const payload = await recipeApi.getBootstrap(selectedStatus.value)
       quickCategories.value = payload.quickCategories
       cookingCategories.value = payload.cookingCategories
       takeoutCategories.value = payload.takeoutCategories
       statusOptions.value = payload.statusOptions
       recommendation.value = withLocalState(payload.recommendation)
+      rememberRecommendation(recommendation.value.id)
       bootstrapLoaded.value = true
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : '菜谱服务暂时不可用'
@@ -165,9 +177,9 @@ export const useRecipeStore = defineStore('recipe', () => {
     }
   }
 
-  function selectStatus(status: string) {
+  async function selectStatus(status: string) {
     selectedStatus.value = status
-    void persistUserState({ selectedStatus: status })
+    await persistUserState({ selectedStatus: status })
   }
 
   function isFavorite(recipeId: number) {
@@ -229,8 +241,18 @@ export const useRecipeStore = defineStore('recipe', () => {
   }
 
   async function refreshRecommendation() {
-    refreshCount.value += 1
-    await loadBootstrap(true)
+    errorMessage.value = ''
+    try {
+      recommendation.value = withLocalState(await recipeApi.getRandomRecipe(
+        selectedStatus.value,
+        recentRecommendationIds.value,
+      ))
+      rememberRecommendation(recommendation.value.id)
+      return recommendation.value
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : '随机菜谱获取失败'
+      throw error
+    }
   }
 
   watch(favoriteIds, value => uni.setStorageSync('favoriteRecipeIds', value), { deep: true })
@@ -238,6 +260,7 @@ export const useRecipeStore = defineStore('recipe', () => {
   watch(cookedRecipeIds, value => uni.setStorageSync('cookedRecipeIds', value), { deep: true })
   watch(likedRecipeIds, value => uni.setStorageSync('likedRecipeIds', value), { deep: true })
   watch(profile, value => uni.setStorageSync('userProfile', value), { deep: true })
+  watch(recentRecommendationIds, value => uni.setStorageSync('recentRecommendationIds', value), { deep: true })
 
   return {
     selectedStatus,
@@ -247,7 +270,7 @@ export const useRecipeStore = defineStore('recipe', () => {
     cookingCategories,
     takeoutCategories,
     statusOptions,
-    refreshCount,
+    recentRecommendationIds,
     statusLabel,
     loading,
     errorMessage,

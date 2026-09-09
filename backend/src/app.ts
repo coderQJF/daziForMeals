@@ -188,9 +188,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get('/api/v1/bootstrap', async (request) => {
     const query = request.query as Record<string, unknown>
     const status = typeof query.status === 'string' && query.status ? query.status : 'recover'
-    const parsedOffset = Number(query.offset)
-    const offset = Number.isInteger(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0
-    return { data: await repository.bootstrap(status, offset) }
+    return { data: await repository.bootstrap(resolveClientId(request.headers, sessionSecret), status) }
   })
 
   app.get('/api/v1/recipes', async (request) => {
@@ -204,6 +202,21 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (Number.isInteger(parsedLimit) && parsedLimit > 0) recipeQuery.limit = Math.min(parsedLimit, 100)
     const items = await repository.list(recipeQuery)
     return { data: items, meta: { total: items.length } }
+  })
+
+  app.get('/api/v1/recipes/random', async (request) => {
+    const query = request.query as Record<string, unknown>
+    const status = typeof query.status === 'string' && query.status ? query.status : 'normal'
+    const excludeIds = typeof query.exclude === 'string'
+      ? query.exclude.split(',').slice(0, 20).map(Number).filter(id => Number.isInteger(id) && id > 0)
+      : []
+    return {
+      data: await repository.recommend(
+        resolveClientId(request.headers, sessionSecret),
+        status,
+        excludeIds,
+      ),
+    }
   })
 
   app.get('/api/v1/recipes/:id', async (request, reply) => {

@@ -18,8 +18,8 @@ async function loadStatuses() {
   }
 }
 
-function complete() {
-  store.selectStatus(selected.value)
+async function complete() {
+  await store.selectStatus(selected.value)
   uni.showToast({ title: '状态已更新', icon: 'success' })
   setTimeout(() => {
     if (getCurrentPages().length > 1) uni.navigateBack()

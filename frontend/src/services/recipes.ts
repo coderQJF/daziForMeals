@@ -8,8 +8,13 @@ function compactQuery(query: RecipeListQuery): Record<string, string | number> {
 }
 
 export const recipeApi = {
-  getBootstrap(status = 'recover', offset = 0) {
-    return apiGet<RecipeBootstrap>('/bootstrap', { status, offset })
+  getBootstrap(status = 'recover') {
+    return apiGet<RecipeBootstrap>('/bootstrap', { status })
+  },
+  getRandomRecipe(status = 'normal', excludeIds: number[] = []) {
+    const query: Record<string, string | number> = { status }
+    if (excludeIds.length) query.exclude = excludeIds.join(',')
+    return apiGet<RecipeDetail>('/recipes/random', query)
   },
   getRecipes(query: RecipeListQuery = {}) {
     return apiGet<RecipeDetail[]>('/recipes', compactQuery(query))

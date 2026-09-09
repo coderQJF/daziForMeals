@@ -67,4 +67,5 @@ export interface TakeoutShop {
   distance: string
   deliveryTime: string
   promotion: string
+  tagIds: string[]
 }

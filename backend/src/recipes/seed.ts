@@ -1,4 +1,4 @@
-import type { Category, Ingredient, RecipeStep, StatusOption } from './types.js'
+import type { Category, Ingredient, RecipeStep, RecipeTag, RecipeTagging, StatusOption } from './types.js'
 
 export interface SeedRecipe {
   id: number
@@ -7,9 +7,11 @@ export interface SeedRecipe {
   heroKey: string
   thumbnailKey: string
   categoryId: string
+  categoryIds?: string[]
   category: string
   tags: string[]
   statusIds: string[]
+  taggings?: RecipeTagging[]
   reason: string
   cookTime: number
   calories: number
@@ -39,6 +41,7 @@ export const categorySeeds: Category[] = [
 
 export const statusSeeds: StatusOption[] = [
   { id: 'recover', name: '骨折恢复期', icon: '🦴' },
+  { id: 'fitness', name: '健身期', icon: '💪' },
   { id: 'late', name: '熬夜', icon: '🌙' },
   { id: 'rainy', name: '下雨天', icon: '🌧️' },
   { id: 'lazy', name: '犯懒', icon: '😴' },
@@ -50,6 +53,38 @@ export const statusSeeds: StatusOption[] = [
   { id: 'normal', name: '状态不错', icon: '😊' },
 ]
 
+interface SimpleRecipeSeed {
+  id: number
+  name: string
+  imageKey: string
+  categoryId: string
+  categoryIds?: string[]
+  category: string
+  tags: string[]
+  statusIds: string[]
+  reason: string
+  cookTime: number
+  calories: number
+  popularity: number
+  servings?: number
+  difficulty?: SeedRecipe['difficulty']
+  ingredients: Ingredient[]
+  sortOrder: number
+}
+
+function simpleRecipe(seed: SimpleRecipeSeed): SeedRecipe {
+  const { imageKey, ...recipe } = seed
+  return {
+    ...recipe,
+    coverKey: imageKey,
+    heroKey: imageKey,
+    thumbnailKey: imageKey,
+    servings: seed.servings ?? 2,
+    difficulty: seed.difficulty ?? '简单',
+    steps: [{ text: `备好食材，按家常做法完成${seed.name}，少油少盐调味。`, imageKey }],
+  }
+}
+
 export const recipeSeeds: SeedRecipe[] = [
   {
     id: 1001,
@@ -58,6 +93,7 @@ export const recipeSeeds: SeedRecipe[] = [
     heroKey: 'images/recipes/yam-pork-rib-soup-hero.jpg',
     thumbnailKey: 'images/recipes/yam-pork-rib-soup-thumb.jpg',
     categoryId: 'soup',
+    categoryIds: ['soup', 'recovery'],
     category: '汤羹',
     tags: ['高钙', '低脂', '易消化'],
     statusIds: ['recover', 'appetite', 'rainy'],
@@ -85,22 +121,28 @@ export const recipeSeeds: SeedRecipe[] = [
   },
   {
     id: 1002,
-    name: '番茄牛肉汤',
+    name: '番茄牛腩',
     coverKey: 'images/category/cooking/home-style-cover.jpg',
     heroKey: 'images/category/cooking/home-style-cover.jpg',
     thumbnailKey: 'images/category/cooking/home-style-cover.jpg',
     categoryId: 'home-style',
-    category: '暖胃汤羹',
-    tags: ['高蛋白', '易消化', '暖胃'],
-    statusIds: ['recover', 'late', 'rainy'],
-    reason: '番茄富含维生素 C，牛肉补充优质蛋白，暖胃又补能量。',
+    categoryIds: ['home-style', 'soup'],
+    category: '家常菜',
+    tags: ['高蛋白', '补铁', '强健体能'],
+    statusIds: ['fitness', 'energy', 'normal'],
+    taggings: [
+      { tagId: 'fitness', weight: 120, source: 'manual', confidence: 1 },
+      { tagId: 'energy', weight: 105, source: 'manual', confidence: 1 },
+      { tagId: 'normal', weight: 85, source: 'manual', confidence: 1 },
+    ],
+    reason: '牛腩提供优质蛋白和铁，番茄清爽解腻，适合健身期补充能量。',
     cookTime: 35,
     calories: 280,
     popularity: 8724,
     servings: 2,
     difficulty: '简单',
     ingredients: [
-      { name: '牛肉', amount: '300g', icon: '🥩' },
+      { name: '牛腩', amount: '300g', icon: '🥩' },
       { name: '番茄', amount: '2 个', icon: '🍅' },
       { name: '洋葱', amount: '半个', icon: '🧅' },
       { name: '姜片', amount: '3 片', icon: '🫚' },
@@ -122,9 +164,10 @@ export const recipeSeeds: SeedRecipe[] = [
     heroKey: 'images/category/cooking/light-cover.jpg',
     thumbnailKey: 'images/category/cooking/light-cover.jpg',
     categoryId: 'light',
+    categoryIds: ['light', 'quick'],
     category: '清淡快手菜',
     tags: ['清淡', '低脂', '高蛋白'],
-    statusIds: ['late', 'lazy', 'appetite'],
+    statusIds: ['fitness', 'late', 'lazy', 'appetite'],
     reason: '虾仁鲜嫩高蛋白，搭配西兰花清爽少油，营养均衡。',
     cookTime: 20,
     calories: 220,
@@ -168,22 +211,28 @@ export const recipeSeeds: SeedRecipe[] = [
   },
   {
     id: 2002,
-    name: '番茄牛肉汤',
+    name: '玉米排骨汤',
     coverKey: 'images/category/cooking/home-style-cover.jpg',
     heroKey: 'images/category/cooking/home-style-cover.jpg',
     thumbnailKey: 'images/category/cooking/home-style-cover.jpg',
     categoryId: 'soup',
-    category: '汤羹',
-    tags: ['开胃', '暖胃'],
-    statusIds: ['appetite', 'rainy'],
-    reason: '酸甜开胃，汤鲜味美，营养又暖心。',
+    categoryIds: ['soup', 'recovery'],
+    category: '滋补汤羹',
+    tags: ['高钙', '优质蛋白', '温和滋补'],
+    statusIds: ['recover', 'appetite', 'rainy'],
+    taggings: [
+      { tagId: 'recover', weight: 125, source: 'manual', confidence: 1 },
+      { tagId: 'appetite', weight: 85, source: 'manual', confidence: 1 },
+      { tagId: 'rainy', weight: 80, source: 'manual', confidence: 1 },
+    ],
+    reason: '玉米清甜、排骨补充蛋白质与钙，口味温和，适合骨折恢复期。',
     cookTime: 40,
     calories: 280,
     popularity: 7028,
     servings: 2,
     difficulty: '简单',
-    ingredients: [{ name: '牛肉', amount: '300g', icon: '🥩' }, { name: '番茄', amount: '2 个', icon: '🍅' }],
-    steps: [{ text: '牛肉焯水后与番茄一同炖煮至软烂。', imageKey: 'images/category/cooking/home-style-cover.jpg' }],
+    ingredients: [{ name: '猪排骨', amount: '500g', icon: '🥩' }, { name: '甜玉米', amount: '1 根', icon: '🌽' }],
+    steps: [{ text: '排骨焯水，与玉米一起小火炖至汤清肉软。', imageKey: 'images/category/cooking/soup-cover.jpg' }],
     sortOrder: 50,
   },
   {
@@ -206,4 +255,287 @@ export const recipeSeeds: SeedRecipe[] = [
     steps: [{ text: '牛肉腌制后大火滑炒，再加入青椒快速翻炒。', imageKey: 'images/category/cooking/quick-cover.jpg' }],
     sortOrder: 60,
   },
+  simpleRecipe({
+    id: 2004,
+    name: '清蒸鲈鱼',
+    imageKey: 'images/plan/meals/steamed-fish.jpg',
+    categoryId: 'light',
+    categoryIds: ['light', 'recovery'],
+    category: '清淡菜',
+    tags: ['高蛋白', '低脂', '易消化'],
+    statusIds: ['recover', 'fitness', 'light'],
+    reason: '鲈鱼高蛋白、脂肪适中，清蒸做法清淡，适合恢复期和健身期。',
+    cookTime: 25,
+    calories: 210,
+    popularity: 8520,
+    ingredients: [{ name: '鲈鱼', amount: '1 条', icon: '🐟' }, { name: '姜葱', amount: '适量', icon: '🫚' }],
+    sortOrder: 70,
+  }),
+  simpleRecipe({
+    id: 2005,
+    name: '香菇蒸鸡',
+    imageKey: 'images/category/cooking/recovery-cover.jpg',
+    categoryId: 'home-style',
+    categoryIds: ['home-style', 'recovery'],
+    category: '家常菜',
+    tags: ['高蛋白', '少油', '鲜香'],
+    statusIds: ['recover', 'fitness', 'energy'],
+    reason: '鸡肉提供优质蛋白，蒸制少油，香菇增加鲜味，营养又温和。',
+    cookTime: 35,
+    calories: 330,
+    popularity: 8310,
+    ingredients: [{ name: '鸡腿肉', amount: '350g', icon: '🍗' }, { name: '香菇', amount: '6 朵', icon: '🍄' }],
+    sortOrder: 80,
+  }),
+  simpleRecipe({
+    id: 2006,
+    name: '番茄炒蛋',
+    imageKey: 'images/category/cooking/quick-cover.jpg',
+    categoryId: 'quick',
+    categoryIds: ['quick', 'home-style'],
+    category: '快手菜',
+    tags: ['快手', '开胃', '家常'],
+    statusIds: ['lazy', 'appetite', 'normal'],
+    reason: '酸甜开胃、十几分钟就能完成，是忙碌或没胃口时的稳妥选择。',
+    cookTime: 15,
+    calories: 260,
+    popularity: 9600,
+    ingredients: [{ name: '番茄', amount: '2 个', icon: '🍅' }, { name: '鸡蛋', amount: '3 个', icon: '🥚' }],
+    sortOrder: 90,
+  }),
+  simpleRecipe({
+    id: 2007,
+    name: '冬瓜虾皮汤',
+    imageKey: 'images/category/cooking/soup-cover.jpg',
+    categoryId: 'soup',
+    categoryIds: ['soup', 'light'],
+    category: '清淡汤羹',
+    tags: ['清淡', '低脂', '补钙'],
+    statusIds: ['recover', 'light', 'appetite'],
+    reason: '汤味清鲜、负担较轻，虾皮还能补充钙质。',
+    cookTime: 20,
+    calories: 120,
+    popularity: 7440,
+    ingredients: [{ name: '冬瓜', amount: '400g', icon: '🥒' }, { name: '虾皮', amount: '20g', icon: '🦐' }],
+    sortOrder: 100,
+  }),
+  simpleRecipe({
+    id: 2008,
+    name: '芹菜炒鸡胸肉',
+    imageKey: 'images/category/cooking/light-cover.jpg',
+    categoryId: 'light',
+    categoryIds: ['light', 'quick'],
+    category: '低脂快手菜',
+    tags: ['高蛋白', '低脂', '高纤维'],
+    statusIds: ['fitness', 'light', 'normal'],
+    reason: '鸡胸肉补充蛋白质，芹菜增加纤维，适合健身期的日常正餐。',
+    cookTime: 20,
+    calories: 240,
+    popularity: 8050,
+    ingredients: [{ name: '鸡胸肉', amount: '250g', icon: '🍗' }, { name: '芹菜', amount: '250g', icon: '🥬' }],
+    sortOrder: 110,
+  }),
+  simpleRecipe({
+    id: 2009,
+    name: '南瓜小米粥',
+    imageKey: 'images/plan/meals/tomato-beef-congee.jpg',
+    categoryId: 'soup',
+    categoryIds: ['soup', 'light'],
+    category: '粥品',
+    tags: ['暖胃', '易消化', '清淡'],
+    statusIds: ['late', 'appetite', 'rainy'],
+    reason: '软糯温热、容易消化，熬夜后或胃口不佳时更容易入口。',
+    cookTime: 35,
+    calories: 190,
+    popularity: 7790,
+    ingredients: [{ name: '南瓜', amount: '250g', icon: '🎃' }, { name: '小米', amount: '80g', icon: '🌾' }],
+    sortOrder: 120,
+  }),
+  simpleRecipe({
+    id: 2010,
+    name: '菠菜猪肝汤',
+    imageKey: 'images/category/cooking/soup-cover.jpg',
+    categoryId: 'soup',
+    categoryIds: ['soup', 'recovery'],
+    category: '营养汤羹',
+    tags: ['补铁', '补能量', '家常'],
+    statusIds: ['energy', 'recover'],
+    reason: '猪肝和菠菜富含铁，适合需要补充能量时作为多样化饮食的一部分。',
+    cookTime: 25,
+    calories: 230,
+    popularity: 6900,
+    ingredients: [{ name: '猪肝', amount: '200g', icon: '🥩' }, { name: '菠菜', amount: '200g', icon: '🥬' }],
+    sortOrder: 130,
+  }),
+  simpleRecipe({
+    id: 2011,
+    name: '鲜虾蒸蛋',
+    imageKey: 'images/plan/meals/steamed-egg.jpg',
+    categoryId: 'light',
+    categoryIds: ['light', 'recovery'],
+    category: '清淡菜',
+    tags: ['高蛋白', '嫩滑', '易消化'],
+    statusIds: ['recover', 'appetite', 'light'],
+    reason: '鸡蛋嫩滑、虾仁鲜甜，口感温和，适合恢复期或没胃口时。',
+    cookTime: 18,
+    calories: 200,
+    popularity: 8890,
+    ingredients: [{ name: '鸡蛋', amount: '2 个', icon: '🥚' }, { name: '虾仁', amount: '80g', icon: '🦐' }],
+    sortOrder: 140,
+  }),
+  simpleRecipe({
+    id: 2012,
+    name: '蒜蓉时蔬',
+    imageKey: 'images/category/cooking/light-cover.jpg',
+    categoryId: 'light',
+    categoryIds: ['light', 'quick'],
+    category: '清淡快手菜',
+    tags: ['高纤维', '低脂', '快手'],
+    statusIds: ['light', 'lazy', 'normal'],
+    reason: '当季蔬菜简单快炒，补充膳食纤维，也方便搭配其他主菜。',
+    cookTime: 12,
+    calories: 130,
+    popularity: 7200,
+    ingredients: [{ name: '当季蔬菜', amount: '400g', icon: '🥬' }, { name: '蒜瓣', amount: '3 瓣', icon: '🧄' }],
+    sortOrder: 150,
+  }),
+  simpleRecipe({
+    id: 2013,
+    name: '糙米鸡肉饭',
+    imageKey: 'images/plan/meals/brown-rice.jpg',
+    categoryId: 'home-style',
+    categoryIds: ['home-style', 'light'],
+    category: '营养主食',
+    tags: ['高蛋白', '粗粮', '饱腹'],
+    statusIds: ['fitness', 'energy', 'normal'],
+    reason: '糙米提供复合碳水，鸡肉补充蛋白质，适合训练日均衡补能。',
+    cookTime: 35,
+    calories: 480,
+    popularity: 8420,
+    ingredients: [{ name: '糙米', amount: '120g', icon: '🍚' }, { name: '鸡腿肉', amount: '220g', icon: '🍗' }],
+    sortOrder: 160,
+  }),
+  simpleRecipe({
+    id: 2014,
+    name: '菌菇豆腐汤',
+    imageKey: 'images/category/cooking/soup-cover.jpg',
+    categoryId: 'soup',
+    categoryIds: ['soup', 'light'],
+    category: '清淡汤羹',
+    tags: ['植物蛋白', '清淡', '暖胃'],
+    statusIds: ['light', 'rainy', 'late'],
+    reason: '菌菇鲜香、豆腐柔嫩，清淡暖胃又不会过分油腻。',
+    cookTime: 22,
+    calories: 170,
+    popularity: 7680,
+    ingredients: [{ name: '嫩豆腐', amount: '300g', icon: '⬜' }, { name: '混合菌菇', amount: '200g', icon: '🍄' }],
+    sortOrder: 170,
+  }),
+  simpleRecipe({
+    id: 2015,
+    name: '牛奶燕麦杯',
+    imageKey: 'images/plan/meals/milk.jpg',
+    categoryId: 'quick',
+    categoryIds: ['quick', 'light'],
+    category: '快手早餐',
+    tags: ['高钙', '粗粮', '快手'],
+    statusIds: ['fitness', 'energy', 'lazy'],
+    reason: '牛奶搭配燕麦，准备简单，能同时补充钙和稳定碳水。',
+    cookTime: 8,
+    calories: 280,
+    popularity: 8120,
+    servings: 1,
+    ingredients: [{ name: '牛奶', amount: '250ml', icon: '🥛' }, { name: '燕麦片', amount: '50g', icon: '🌾' }],
+    sortOrder: 180,
+  }),
+  simpleRecipe({
+    id: 2016,
+    name: '水果酸奶碗',
+    imageKey: 'images/plan/meals/fruit-platter.jpg',
+    categoryId: 'quick',
+    categoryIds: ['quick', 'light'],
+    category: '快手加餐',
+    tags: ['高纤维', '清爽', '快手'],
+    statusIds: ['fitness', 'appetite', 'normal'],
+    reason: '水果和酸奶清爽易入口，适合作为训练后或午后的简单加餐。',
+    cookTime: 8,
+    calories: 230,
+    popularity: 8350,
+    servings: 1,
+    ingredients: [{ name: '原味酸奶', amount: '200g', icon: '🥛' }, { name: '混合水果', amount: '200g', icon: '🍎' }],
+    sortOrder: 190,
+  }),
+  simpleRecipe({
+    id: 2017,
+    name: '核桃黑芝麻糊',
+    imageKey: 'images/plan/meals/walnuts.jpg',
+    categoryId: 'soup',
+    categoryIds: ['soup', 'quick'],
+    category: '营养加餐',
+    tags: ['坚果', '暖胃', '补能量'],
+    statusIds: ['energy', 'late', 'rainy'],
+    reason: '坚果和芝麻香浓温热，适合天气凉或需要补充能量时少量食用。',
+    cookTime: 12,
+    calories: 260,
+    popularity: 7010,
+    servings: 1,
+    ingredients: [{ name: '核桃', amount: '20g', icon: '🌰' }, { name: '黑芝麻粉', amount: '35g', icon: '⚫' }],
+    sortOrder: 200,
+  }),
+  simpleRecipe({
+    id: 2018,
+    name: '肉末茄子',
+    imageKey: 'images/category/cooking/home-style-cover.jpg',
+    categoryId: 'home-style',
+    categoryIds: ['home-style', 'quick'],
+    category: '家常菜',
+    tags: ['下饭', '家常', '快手'],
+    statusIds: ['normal', 'lazy'],
+    reason: '软糯下饭、做法家常，适合想吃点有滋味又不想折腾的时候。',
+    cookTime: 25,
+    calories: 360,
+    popularity: 8230,
+    ingredients: [{ name: '茄子', amount: '2 根', icon: '🍆' }, { name: '猪肉末', amount: '150g', icon: '🥩' }],
+    sortOrder: 210,
+  }),
+  simpleRecipe({
+    id: 2019,
+    name: '柠檬香煎鸡腿',
+    imageKey: 'images/category/cooking/quick-cover.jpg',
+    categoryId: 'quick',
+    categoryIds: ['quick', 'home-style'],
+    category: '快手菜',
+    tags: ['高蛋白', '开胃', '香煎'],
+    statusIds: ['fitness', 'appetite', 'normal'],
+    reason: '鸡腿肉蛋白质充足，柠檬香气清新，训练期也能吃得有滋味。',
+    cookTime: 28,
+    calories: 350,
+    popularity: 8480,
+    ingredients: [{ name: '去皮鸡腿', amount: '2 只', icon: '🍗' }, { name: '柠檬', amount: '半个', icon: '🍋' }],
+    sortOrder: 220,
+  }),
 ]
+
+export const recipeTagSeeds: RecipeTag[] = [
+  ...statusSeeds.map(status => ({ id: status.id, name: status.name, type: 'status' as const })),
+  ...[...new Set(recipeSeeds.flatMap(recipe => recipe.tags))]
+    .map(name => ({ id: `feature:${name}`, name, type: 'feature' as const })),
+]
+
+export function getSeedTaggings(seed: SeedRecipe): RecipeTagging[] {
+  const explicit = new Map(seed.taggings?.map(tagging => [tagging.tagId, tagging]))
+  return [
+    ...seed.statusIds.map(tagId => explicit.get(tagId) ?? {
+      tagId,
+      weight: 100,
+      source: 'manual' as const,
+      confidence: 1,
+    }),
+    ...seed.tags.map(name => ({
+      tagId: `feature:${name}`,
+      weight: 100,
+      source: 'manual' as const,
+      confidence: 1,
+    })),
+  ]
+}

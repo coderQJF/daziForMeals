@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
+import { onUnmounted, ref } from 'vue'
 import AppTabBar from '@/components/AppTabBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useRecipeStore } from '@/stores/recipe'
@@ -9,6 +10,9 @@ import type { CategoryItem } from '@/types/recipe'
 
 const recipeStore = useRecipeStore()
 const { recommendation, selectedStatus, statusLabel, quickCategories, statusOptions, loading, errorMessage } = storeToRefs(recipeStore)
+const blindBoxOpen = ref(false)
+const blindBoxStage = ref<'rolling' | 'result'>('rolling')
+let blindBoxDelay: ReturnType<typeof setTimeout> | undefined
 
 async function loadHome(force = false) {
   try {
@@ -18,13 +22,13 @@ async function loadHome(force = false) {
   }
 }
 
-function handleQuickAction(item: CategoryItem) {
+async function handleQuickAction(item: CategoryItem) {
   if (item.id === 'takeout') {
     uni.navigateTo({ url: '/pages/takeout/takeout' })
     return
   }
 
-  if (item.id === 'recover') recipeStore.selectStatus('recover')
+  if (item.id === 'recover') await recipeStore.selectStatus('recover')
   uni.navigateTo({ url: `/pages/recommend/recommend?type=${item.id}` })
 }
 
@@ -49,17 +53,41 @@ function openStatus() {
   uni.navigateTo({ url: '/pages/status/status' })
 }
 
-async function refreshRecommendation() {
+function waitForBlindBoxRoll() {
+  return new Promise<void>((resolve) => {
+    blindBoxDelay = setTimeout(resolve, 1600)
+  })
+}
+
+async function openBlindBox() {
+  if (blindBoxOpen.value && blindBoxStage.value === 'rolling') return
+  blindBoxStage.value = 'rolling'
+  blindBoxOpen.value = true
+
   try {
-    await recipeStore.refreshRecommendation()
-    uni.showToast({ title: '已为你刷新推荐', icon: 'none' })
+    await Promise.all([
+      recipeStore.refreshRecommendation(),
+      waitForBlindBoxRoll(),
+    ])
+    blindBoxStage.value = 'result'
   } catch {
+    blindBoxOpen.value = false
     uni.showToast({ title: errorMessage.value, icon: 'none' })
   }
 }
 
+function closeBlindBox() {
+  if (blindBoxStage.value === 'rolling') return
+  blindBoxOpen.value = false
+}
+
+function openBlindBoxRecipe() {
+  blindBoxOpen.value = false
+  openRecipe()
+}
+
 async function selectStatus(status: string) {
-  recipeStore.selectStatus(status)
+  await recipeStore.selectStatus(status)
   await loadHome(true)
 }
 
@@ -70,6 +98,10 @@ onShow(() => void loadHome())
 onPullDownRefresh(async () => {
   await loadHome(true)
   uni.stopPullDownRefresh()
+})
+
+onUnmounted(() => {
+  if (blindBoxDelay) clearTimeout(blindBoxDelay)
 })
 </script>
 
@@ -99,7 +131,7 @@ onPullDownRefresh(async () => {
       </button>
     </view>
 
-    <button class="blind-box" @click="refreshRecommendation">
+    <button class="blind-box" :disabled="blindBoxOpen" @click="openBlindBox">
       <view class="blind-box__icon-wrap">
         <image class="blind-box__icon" src="/static/images/home/icon-blind-box.png" mode="aspectFit" />
       </view>
@@ -158,6 +190,36 @@ onPullDownRefresh(async () => {
         </view>
       </view>
     </button>
+
+    <view v-if="blindBoxOpen" class="blind-modal" @touchmove.stop.prevent>
+      <view class="blind-modal__backdrop" />
+
+      <view v-if="blindBoxStage === 'rolling'" class="blind-rolling">
+        <view class="blind-rolling__halo">
+          <image class="blind-rolling__dice" src="/static/images/home/icon-blind-box.png" mode="aspectFit" />
+        </view>
+        <text class="blind-rolling__title">骰子转呀转…</text>
+        <text class="blind-rolling__hint">正在帮你挑一道今天想吃的菜</text>
+        <view class="blind-rolling__dots"><text /><text /><text /></view>
+      </view>
+
+      <view v-else class="blind-result" role="dialog" aria-label="随机盲盒结果">
+        <button class="blind-result__close" aria-label="关闭随机盲盒" @click="closeBlindBox">×</button>
+        <view class="blind-result__spark blind-result__spark--left">✦</view>
+        <view class="blind-result__spark blind-result__spark--right">✦</view>
+        <text class="blind-result__eyebrow">今天就吃这个吧</text>
+        <image class="blind-result__cover" :src="recommendation.cover" mode="aspectFill" />
+        <text class="blind-result__name">{{ recommendation.name }}</text>
+        <text class="blind-result__reason">{{ recommendation.reason }}</text>
+        <view class="blind-result__meta">
+          <text>{{ recommendation.cookTime }} 分钟</text>
+          <text>{{ recommendation.difficulty }}</text>
+          <text>约 {{ recommendation.calories }} kcal</text>
+        </view>
+        <button class="blind-result__action" @click="openBlindBoxRecipe">看看怎么做</button>
+        <button class="blind-result__again" @click="openBlindBox">再摇一次</button>
+      </view>
+    </view>
 
     <!-- #ifndef MP-WEIXIN -->
     <AppTabBar :selected="0" />
@@ -385,6 +447,240 @@ onPullDownRefresh(async () => {
   box-shadow: 0 7rpx 18rpx rgba(239, 102, 0, 0.2);
   font-size: 24rpx;
   font-weight: 750;
+}
+
+.blind-modal {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: flex;
+  padding: 48rpx;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.blind-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(37, 26, 18, 0.58);
+  animation: blind-fade-in 220ms ease-out both;
+}
+
+.blind-rolling {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  color: #fff;
+}
+
+.blind-rolling__halo {
+  display: flex;
+  width: 196rpx;
+  height: 196rpx;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 0 20rpx rgba(255, 144, 11, 0.16), 0 22rpx 64rpx rgba(30, 18, 8, 0.24);
+  animation: blind-halo-pulse 900ms ease-in-out infinite alternate;
+}
+
+.blind-rolling__dice {
+  width: 128rpx;
+  height: 128rpx;
+  animation: blind-dice-roll 620ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.blind-rolling__title {
+  margin-top: 52rpx;
+  font-size: 36rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+}
+
+.blind-rolling__hint {
+  margin-top: 14rpx;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 25rpx;
+}
+
+.blind-rolling__dots {
+  display: flex;
+  margin-top: 28rpx;
+  gap: 13rpx;
+}
+
+.blind-rolling__dots text {
+  width: 11rpx;
+  height: 11rpx;
+  border-radius: 50%;
+  background: #fff;
+  animation: blind-dot 720ms ease-in-out infinite alternate;
+}
+
+.blind-rolling__dots text:nth-child(2) { animation-delay: 180ms; }
+.blind-rolling__dots text:nth-child(3) { animation-delay: 360ms; }
+
+.blind-result {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  max-width: 620rpx;
+  padding: 34rpx 32rpx 30rpx;
+  flex-direction: column;
+  align-items: center;
+  border: 2rpx solid rgba(255, 197, 122, 0.6);
+  border-radius: 38rpx;
+  background: linear-gradient(180deg, #fffaf3 0%, #fff 62%);
+  box-shadow: 0 32rpx 90rpx rgba(36, 21, 8, 0.28);
+  box-sizing: border-box;
+  transform-origin: center center;
+  animation: blind-result-grow 680ms cubic-bezier(0.2, 0.9, 0.25, 1.16) both;
+}
+
+.blind-result__close {
+  position: absolute;
+  z-index: 2;
+  top: 18rpx;
+  right: 18rpx;
+  display: flex;
+  width: 64rpx;
+  height: 64rpx;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  color: #7b7068;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 44rpx;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.blind-result__spark {
+  position: absolute;
+  color: #ffaf43;
+  font-size: 42rpx;
+  animation: blind-spark 900ms ease-in-out infinite alternate;
+}
+
+.blind-result__spark--left { top: 118rpx; left: 18rpx; }
+.blind-result__spark--right { top: 210rpx; right: 17rpx; animation-delay: 260ms; }
+
+.blind-result__eyebrow {
+  color: $color-primary-deep;
+  font-size: 26rpx;
+  font-weight: 750;
+  letter-spacing: 2rpx;
+}
+
+.blind-result__cover {
+  width: 284rpx;
+  height: 284rpx;
+  margin-top: 24rpx;
+  border: 10rpx solid #fff;
+  border-radius: 50%;
+  background: #f1e9e1;
+  box-shadow: 0 16rpx 42rpx rgba(190, 110, 35, 0.2);
+  animation: blind-dish-grow 820ms 130ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.blind-result__name {
+  max-width: 100%;
+  margin-top: 23rpx;
+  overflow: hidden;
+  color: $color-text;
+  font-size: 38rpx;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.blind-result__reason {
+  display: -webkit-box;
+  margin-top: 12rpx;
+  overflow: hidden;
+  color: $color-text-secondary;
+  font-size: 25rpx;
+  line-height: 1.5;
+  text-align: center;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.blind-result__meta {
+  display: flex;
+  margin-top: 20rpx;
+  color: #918780;
+  font-size: 24rpx;
+  gap: 23rpx;
+}
+
+.blind-result__action {
+  width: 100%;
+  height: 82rpx;
+  margin-top: 28rpx;
+  color: #fff;
+  border-radius: 41rpx;
+  background: linear-gradient(135deg, #ffad35, $color-primary-deep);
+  box-shadow: 0 12rpx 28rpx rgba(255, 118, 0, 0.22);
+  font-size: 28rpx;
+  font-weight: 750;
+  line-height: 82rpx;
+}
+
+.blind-result__again {
+  min-width: 160rpx;
+  height: 64rpx;
+  margin-top: 12rpx;
+  color: $color-primary-deep;
+  font-size: 24rpx;
+  line-height: 64rpx;
+}
+
+@keyframes blind-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes blind-dice-roll {
+  0% { transform: rotate(0deg) scale(0.92); }
+  25% { transform: rotate(92deg) scale(1.08); }
+  50% { transform: rotate(180deg) scale(0.94); }
+  75% { transform: rotate(272deg) scale(1.08); }
+  100% { transform: rotate(360deg) scale(0.92); }
+}
+
+@keyframes blind-halo-pulse {
+  from { transform: scale(0.96); }
+  to { transform: scale(1.04); }
+}
+
+@keyframes blind-dot {
+  from { opacity: 0.35; transform: translateY(4rpx); }
+  to { opacity: 1; transform: translateY(-4rpx); }
+}
+
+@keyframes blind-result-grow {
+  0% { opacity: 0; transform: scale(0.12); }
+  62% { opacity: 1; transform: scale(1.035); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes blind-dish-grow {
+  0% { opacity: 0; transform: scale(0.3) rotate(-8deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes blind-spark {
+  from { opacity: 0.35; transform: scale(0.75) rotate(-12deg); }
+  to { opacity: 1; transform: scale(1.15) rotate(10deg); }
 }
 
 .status-card {

@@ -14,6 +14,14 @@ export interface Recipe {
   difficulty: '简单' | '适中' | '进阶'
   isFavorite: boolean
   categoryId?: string
+  categoryIds?: string[]
+  tagIds?: string[]
+  taggings?: Array<{
+    tagId: string
+    weight: number
+    source: 'manual' | 'ai'
+    confidence: number
+  }>
   statusIds?: string[]
 }
 

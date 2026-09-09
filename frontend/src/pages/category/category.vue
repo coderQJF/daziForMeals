@@ -44,7 +44,7 @@ function viewAll(source: 'cooking' | 'takeout') {
 }
 
 async function selectStatus(id: string) {
-  recipeStore.selectStatus(id)
+  await recipeStore.selectStatus(id)
   await loadCategory(true)
 }
 

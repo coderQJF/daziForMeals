@@ -16,8 +16,11 @@ export interface Recipe {
   hero: string
   thumbnail: string
   categoryId: string
+  categoryIds: string[]
   category: string
   tags: string[]
+  tagIds: string[]
+  taggings: RecipeTagging[]
   statusIds: string[]
   reason: string
   cookTime: number
@@ -50,6 +53,22 @@ export interface RecipeQuery {
   status?: string
   sort?: 'default' | 'latest' | 'popular'
   limit?: number
+}
+
+export type RecipeTagType = 'status' | 'feature'
+export type RecipeTagSource = 'manual' | 'ai'
+
+export interface RecipeTag {
+  id: string
+  name: string
+  type: RecipeTagType
+}
+
+export interface RecipeTagging {
+  tagId: string
+  weight: number
+  source: RecipeTagSource
+  confidence: number
 }
 
 export interface BootstrapPayload {
@@ -135,10 +154,12 @@ export interface TakeoutShop {
   distance: string
   deliveryTime: string
   promotion: string
+  tagIds: string[]
 }
 
 export interface RecipeRepository {
-  bootstrap(status: string, offset: number): Promise<BootstrapPayload>
+  bootstrap(clientId: string, status: string): Promise<BootstrapPayload>
+  recommend(clientId: string, status: string, excludeIds?: number[]): Promise<Recipe>
   list(query: RecipeQuery): Promise<Recipe[]>
   findById(id: number): Promise<Recipe | undefined>
   getUserState(clientId: string): Promise<UserState>

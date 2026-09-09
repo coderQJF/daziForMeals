@@ -17,8 +17,9 @@ pnpm dev:backend
 - `GET /api/v1/health`
 - `GET /api/v1`
 - `POST /api/v1/auth/wechat`
-- `GET /api/v1/bootstrap?status=recover&offset=0`
+- `GET /api/v1/bootstrap?status=recover`
 - `GET /api/v1/recipes?category=soup&q=汤&status=recover&sort=default&limit=20`
+- `GET /api/v1/recipes/random?status=recover&exclude=1001,2002`
 - `GET /api/v1/recipes/:id`
 - `GET /api/v1/me`
 - `PUT /api/v1/me`
@@ -27,7 +28,17 @@ pnpm dev:backend
 
 未登录客户端通过 `x-client-id` 区分设备。微信登录成功后，客户端改用服务端签名会话；首次登录会将当前设备的收藏、喜欢、做过、身体状态和计划菜谱复制到微信账号，之后不会用其他设备数据覆盖账号已有数据。状态保存在 PostgreSQL 的 `fandazi_user_state` 表中，微信 `session_key` 不会下发到客户端。
 
-未设置 `DATABASE_URL` 时，本地开发和自动化测试使用内存种子数据；Docker 部署会连接内部 PostgreSQL。首次启动会写入缺失的分类、状态和菜谱数据，已有数据库记录不会在重启时被覆盖。
+未设置 `DATABASE_URL` 时，本地开发和自动化测试使用内存种子数据；Docker 部署会连接内部 PostgreSQL。当前代码维护的菜谱种子会按稳定菜谱 ID 更新，用户行为数据不会被重启覆盖。
+
+## 菜单数据模型
+
+- `fandazi_recipe` 是做菜内容的主库。分类、推荐、详情和饮食计划都通过稳定 `recipe_id` 引用它，不再在计划数据中复制菜名和图片。
+- `fandazi_tag` 与 `fandazi_recipe_tag` 保存菜谱的多对多标签。状态标签和营养/场景标签分型保存；关联同时记录 `weight`、`source`（`manual`/`ai`）与 `confidence`，以后可以混用人工和 AI 标注而不改表结构。
+- `fandazi_user_recipe_action` 保存用户与菜谱之间的收藏、喜欢、做过、计划关系。API 暂时继续返回 ID 数组以兼容现有小程序，PostgreSQL 内部已经按关系行存储并建立索引。
+- `fandazi_takeout_shop` 是独立的外卖商家库，不与菜谱主库混用；外卖条目也有自己的 `tagIds`。
+- `fandazi_recommendation_history` 保存每个用户最近看过的菜谱。随机接口优先从当前状态标签命中的菜谱中加权选择，并排除最近 8 条；候选耗尽后才允许重复。
+
+菜谱目录在服务启动时加载为只读内存目录，当前请求不需要反复读取整张内容表；标签关系和用户行为仍在 PostgreSQL 建有查询索引。随机推荐只在命中的状态候选集中做加权抽样，不使用大表 `ORDER BY random()`，避免数据量增长后进行全表随机排序。
 
 ## 检查与构建
 
