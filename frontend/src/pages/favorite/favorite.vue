@@ -69,19 +69,12 @@ function toggleFavorite(recipe: KitchenRecipe) {
 
 function openRecipeMenu(recipe: KitchenRecipe) {
   uni.showActionSheet({
-    itemList: [recipeStore.isFavorite(recipe.id) ? '取消收藏' : '加入收藏', '添加到饮食计划', '标记为做过'],
+    itemList: [recipeStore.isFavorite(recipe.id) ? '取消收藏' : '加入收藏', '标记为做过'],
     success: ({ tapIndex }) => {
       if (tapIndex === 0) {
         toggleFavorite(recipe)
         return
       }
-
-      if (tapIndex === 1) {
-        recipeStore.addToPlan(recipe.id)
-        uni.showToast({ title: '已添加到饮食计划', icon: 'none' })
-        return
-      }
-
       recipeStore.markCooked(recipe.id)
       uni.showToast({ title: '已记录为做过', icon: 'none' })
     },

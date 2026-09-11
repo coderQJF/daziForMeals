@@ -121,12 +121,6 @@
         "selectedIconPath": "static/tabbar/category-active.png"
       },
       {
-        "pagePath": "pages/plan/plan",
-        "text": "计划",
-        "iconPath": "static/tabbar/plan.png",
-        "selectedIconPath": "static/tabbar/plan-active.png"
-      },
-      {
         "pagePath": "pages/user/user",
         "text": "我的",
         "iconPath": "static/tabbar/user.png",

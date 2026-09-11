@@ -87,8 +87,12 @@ watch([keyword, activeFilter], () => {
         @click="activeFilter = filter"
       >
         {{ filter }}
+        <view v-if="activeFilter === filter" class="filter-button__indicator" />
       </button>
-      <text class="filter-sort">筛选⌄</text>
+      <view class="filter-sort">
+        <text>筛选</text>
+        <view class="filter-sort__chevron" />
+      </view>
     </view>
 
     <view v-if="loading" class="recipe-list skeleton-list">
@@ -227,15 +231,14 @@ watch([keyword, activeFilter], () => {
 }
 
 .filter-button--active { color: $color-text; font-weight: 800; }
-.filter-button--active::after {
+.filter-button__indicator {
   position: absolute;
-  right: 4rpx;
+  right: 8rpx;
   bottom: 0;
-  left: 4rpx;
-  height: 5rpx;
-  border-radius: 5rpx;
+  left: 8rpx;
+  height: 4rpx;
+  border-radius: 4rpx;
   background: $color-primary;
-  content: '';
 }
 
 .filter-sort {
@@ -246,6 +249,15 @@ watch([keyword, activeFilter], () => {
   color: $color-text-secondary;
   font-size: 25rpx;
   white-space: nowrap;
+}
+
+.filter-sort__chevron {
+  width: 12rpx;
+  height: 12rpx;
+  margin: -6rpx 0 0 8rpx;
+  border-right: 3rpx solid $color-text-secondary;
+  border-bottom: 3rpx solid $color-text-secondary;
+  transform: rotate(45deg);
 }
 .recipe-list { position: relative; z-index: 1; padding-top: 10rpx; }
 

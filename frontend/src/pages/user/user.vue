@@ -33,7 +33,7 @@ const recipeStore = useRecipeStore()
 const { profile, userStats, userLoading, userErrorMessage } = storeToRefs(recipeStore)
 const avatarLoadFailed = ref(false)
 
-useTabBarSelection(3)
+useTabBarSelection(2)
 
 function showNotice() {
   uni.showToast({ title: '暂时没有新消息', icon: 'none' })
@@ -149,7 +149,7 @@ onShow(() => {
     </view>
 
     <!-- #ifndef MP-WEIXIN -->
-    <AppTabBar :selected="3" />
+    <AppTabBar :selected="2" />
     <!-- #endif -->
   </view>
 </template>

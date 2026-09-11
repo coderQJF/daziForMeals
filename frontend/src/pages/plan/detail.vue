@@ -30,7 +30,7 @@ async function loadDetail() {
 
 function goBack() {
   uni.navigateBack({
-    fail: () => uni.switchTab({ url: '/pages/plan/plan' }),
+    fail: () => uni.switchTab({ url: '/pages/index/index' }),
   })
 }
 
@@ -44,7 +44,7 @@ function openMeal(mealId: string) {
 }
 
 function returnToPlan() {
-  uni.switchTab({ url: '/pages/plan/plan' })
+  uni.switchTab({ url: '/pages/index/index' })
 }
 
 onLoad((query) => {
@@ -145,7 +145,7 @@ onLoad((query) => {
       <text>科学搭配每一餐，助力骨骼修复，吃得对，康复更快！</text>
     </view>
 
-    <AppTabBar :selected="2" />
+    <AppTabBar :selected="-1" />
   </view>
 </template>
 

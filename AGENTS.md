@@ -10,7 +10,7 @@
 
 - 优先复用 `frontend/src/components/AppHeader.vue`、`frontend/src/components/AppTabBar.vue` 和 `frontend/src/styles/tokens.scss`。
 - 微信自定义导航必须通过 `AppHeader` 适配胶囊位置，不得重新写死胶囊右侧间距。
-- 四个主 Tab 固定为：首页、分类、计划、我的。收藏/厨房保留为从“我的”进入的普通子页面。微信端使用 `frontend/src/custom-tab-bar/`。
+- 当前主 Tab 为：首页、分类、我的。计划页暂时隐藏并保留路由，后续改为根据每日下单菜品生成；收藏/厨房保留为从“我的”进入的普通子页面。微信端使用 `frontend/src/custom-tab-bar/`。
 - 使用 `#FF900B` 主色和 `#FFF7ED` 页面底色；新增颜色先判断是否应加入 tokens。
 - 正常辅助文字不得小于 `24rpx`；更小字号仅允许用于无法放大的装饰性标记，并需验证真机可读性。
 - 优先修正布局、容器和资源裁切问题，不用额外空白强行拉长页面。

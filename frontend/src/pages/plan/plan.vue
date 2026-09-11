@@ -5,7 +5,6 @@ import AppTabBar from '@/components/AppTabBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { experienceApi } from '@/services/experience'
 import { useRecipeStore } from '@/stores/recipe'
-import { useTabBarSelection } from '@/composables/useTabBarSelection'
 import type { PlanDish, PlanMeal } from '@/types/experience'
 
 const today = new Date()
@@ -100,7 +99,6 @@ const calendarCells = computed<CalendarCell[]>(() => {
   })
 })
 
-useTabBarSelection(2)
 
 function selectDay(time: number) {
   selectedDateTime.value = time
@@ -270,7 +268,7 @@ onShow(() => void loadPlan())
     </view>
 
     <!-- #ifndef MP-WEIXIN -->
-    <AppTabBar :selected="2" />
+    <AppTabBar :selected="-1" />
     <!-- #endif -->
   </view>
 </template>

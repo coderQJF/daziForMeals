@@ -19,11 +19,6 @@ function goBack() {
   uni.redirectTo({ url: '/pages/recipe/list' })
 }
 
-function addPlan() {
-  store.addToPlan(recommendation.value.id)
-  uni.showToast({ title: '已加入今天的计划', icon: 'success' })
-}
-
 async function loadDetail() {
   if (!requestedRecipeId.value) return
   try {
@@ -124,10 +119,6 @@ onShareAppMessage(() => ({
       <button class="bottom-button bottom-button--favorite" @click="store.toggleFavorite">
         <image :src="recommendation.isFavorite ? '/static/tabbar/favorite-active.png' : '/static/tabbar/favorite.png'" mode="aspectFit" />
         <text>{{ recommendation.isFavorite ? '已收藏' : '收藏' }}</text>
-      </button>
-      <button class="bottom-button bottom-button--plan" @click="addPlan">
-        <view class="bottom-button__calendar" />
-        <text>加入计划</text>
       </button>
     </view>
     </template>
@@ -455,8 +446,7 @@ onShareAppMessage(() => ({
   display: grid;
   min-height: 101rpx;
   padding: 9rpx;
-  grid-template-columns: 1fr 1.35fr;
-  gap: 15rpx;
+  grid-template-columns: 1fr;
   border-radius: 30rpx;
   background: rgba(255, 255, 255, 0.97);
   box-shadow: 0 -8rpx 30rpx rgba(68, 43, 25, 0.08);
@@ -482,42 +472,6 @@ onShareAppMessage(() => ({
   color: #5d5854;
   border: 2rpx solid #f28a38;
   background: #fff;
-}
-
-.bottom-button--plan {
-  color: #fff;
-  background: linear-gradient(135deg, #ffa52b, #ff6900);
-  box-shadow: 0 9rpx 22rpx rgba(255, 108, 7, 0.2);
-}
-
-.bottom-button__calendar {
-  position: relative;
-  width: 38rpx;
-  height: 36rpx;
-  margin-right: 11rpx;
-  border: 3rpx solid #fff;
-  border-radius: 8rpx;
-}
-
-.bottom-button__calendar::before {
-  position: absolute;
-  top: 8rpx;
-  right: 0;
-  left: 0;
-  height: 3rpx;
-  background: #fff;
-  content: '';
-}
-
-.bottom-button__calendar::after {
-  position: absolute;
-  top: -7rpx;
-  left: 7rpx;
-  width: 18rpx;
-  height: 8rpx;
-  border-right: 3rpx solid #fff;
-  border-left: 3rpx solid #fff;
-  content: '';
 }
 
 @media (min-width: 500px) {
