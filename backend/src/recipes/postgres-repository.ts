@@ -74,9 +74,11 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
       client_id TEXT PRIMARY KEY,
       payload JSONB NOT NULL,
       actions_migrated BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     ALTER TABLE fandazi_user_state ADD COLUMN IF NOT EXISTS actions_migrated BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE fandazi_user_state ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
     CREATE TABLE IF NOT EXISTS fandazi_user_recipe_action (
       client_id TEXT NOT NULL,
@@ -358,6 +360,42 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
         [category ?? null],
       )
       return result.rows.map(row => row.payload)
+    },
+    async operationsSummary() {
+      const result = await pool.query<{ profiles: string, wechat_accounts: string }>(`
+        SELECT count(*) profiles,
+               count(*) FILTER (WHERE client_id LIKE 'wechat:%') wechat_accounts
+        FROM fandazi_user_state
+      `)
+      const profiles = Number(result.rows[0]?.profiles || 0)
+      const wechatAccounts = Number(result.rows[0]?.wechat_accounts || 0)
+      return { service: 'fandazi', profiles, wechatAccounts, guestProfiles: profiles - wechatAccounts, updatedAt: new Date().toISOString() }
+    },
+    async operationsUsers(query = '', limit = 50, offset = 0) {
+      const keyword = query.trim()
+      const result = await pool.query<{ client_id: string, payload: UserState, updated_at: Date }>(`
+        SELECT client_id,payload,updated_at
+        FROM fandazi_user_state
+        WHERE $1 = '' OR payload->'profile'->>'nickname' ILIKE '%' || $1 || '%'
+        ORDER BY updated_at DESC
+        LIMIT $2 OFFSET $3
+      `, [keyword, limit, offset])
+      const count = await pool.query<{ count: string }>(`
+        SELECT count(*) count FROM fandazi_user_state
+        WHERE $1 = '' OR payload->'profile'->>'nickname' ILIKE '%' || $1 || '%'
+      `, [keyword])
+      return {
+        items: result.rows.map(row => ({
+          id: row.client_id,
+          accountType: row.client_id.startsWith('wechat:') ? 'wechat' as const : 'guest' as const,
+          nickname: row.payload.profile.nickname,
+          favorites: row.payload.favoriteRecipeIds.length,
+          likes: row.payload.likedRecipeIds.length,
+          cooked: row.payload.cookedRecipeIds.length,
+          updatedAt: row.updated_at.toISOString(),
+        })),
+        total: Number(count.rows[0]?.count || 0),
+      }
     },
     async close() {
       await pool.end()

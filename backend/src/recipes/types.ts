@@ -157,6 +157,24 @@ export interface TakeoutShop {
   tagIds: string[]
 }
 
+export interface OperationsSummary {
+  service: 'fandazi'
+  profiles: number
+  wechatAccounts: number
+  guestProfiles: number
+  updatedAt: string
+}
+
+export interface OperationsUser {
+  id: string
+  accountType: 'wechat' | 'guest'
+  nickname: string
+  favorites: number
+  likes: number
+  cooked: number
+  updatedAt: string | null
+}
+
 export interface RecipeRepository {
   bootstrap(clientId: string, status: string): Promise<BootstrapPayload>
   recommend(clientId: string, status: string, excludeIds?: number[]): Promise<Recipe>
@@ -167,5 +185,7 @@ export interface RecipeRepository {
   claimUserState(sourceClientId: string, userClientId: string): Promise<UserState>
   getPlan(clientId: string, date: string): Promise<PlanPayload>
   listTakeout(category?: string): Promise<TakeoutShop[]>
+  operationsSummary(): Promise<OperationsSummary>
+  operationsUsers(query?: string, limit?: number, offset?: number): Promise<{ items: OperationsUser[], total: number }>
   close?(): Promise<void>
 }

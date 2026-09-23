@@ -39,6 +39,26 @@ test('GET /api/v1 exposes the API identity', async () => {
   await app.close()
 })
 
+test('operations endpoints protect and classify profile counts', async () => {
+  const app = buildApp({ logger: false, opsAdminToken: 'operations-secret' })
+  await app.inject({ method: 'GET', url: '/api/v1/me', headers: { 'x-client-id': 'guest-profile-001' } })
+
+  const denied = await app.inject({ method: 'GET', url: '/api/v1/operations/summary' })
+  assert.equal(denied.statusCode, 401)
+
+  const headers = { authorization: 'Bearer operations-secret' }
+  const summary = await app.inject({ method: 'GET', url: '/api/v1/operations/summary', headers })
+  assert.equal(summary.statusCode, 200)
+  assert.equal(summary.json().data.profiles, 1)
+  assert.equal(summary.json().data.guestProfiles, 1)
+
+  const users = await app.inject({ method: 'GET', url: '/api/v1/operations/users?q=%E6%97%A9%E7%9D%A1', headers })
+  assert.equal(users.statusCode, 200)
+  assert.equal(users.json().meta.total, 1)
+  assert.equal(users.json().data[0].accountType, 'guest')
+  await app.close()
+})
+
 test('GET /api/v1/bootstrap returns API-backed home content', async () => {
   const app = buildApp({ logger: false })
   const response = await app.inject({ method: 'GET', url: '/api/v1/bootstrap?status=recover' })

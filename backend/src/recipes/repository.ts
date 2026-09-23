@@ -164,6 +164,27 @@ export function createMemoryRecipeRepository(assetBaseUrl: string): RecipeReposi
     async listTakeout(category) {
       return takeoutShops.filter(shop => !category || shop.categoryId === category).map(shop => ({ ...shop }))
     },
+    async operationsSummary() {
+      const keys = [...userStates.keys()]
+      const wechatAccounts = keys.filter(key => key.startsWith('wechat:')).length
+      return { service: 'fandazi', profiles: keys.length, wechatAccounts, guestProfiles: keys.length - wechatAccounts, updatedAt: new Date().toISOString() }
+    },
+    async operationsUsers(query = '', limit = 50, offset = 0) {
+      const keyword = query.trim().toLocaleLowerCase()
+      const matches = [...userStates.values()].filter(state => !keyword || state.profile.nickname.toLocaleLowerCase().includes(keyword))
+      return {
+        items: matches.slice(offset, offset + limit).map(state => ({
+          id: state.clientId,
+          accountType: state.clientId.startsWith('wechat:') ? 'wechat' as const : 'guest' as const,
+          nickname: state.profile.nickname,
+          favorites: state.favoriteRecipeIds.length,
+          likes: state.likedRecipeIds.length,
+          cooked: state.cookedRecipeIds.length,
+          updatedAt: null,
+        })),
+        total: matches.length,
+      }
+    },
   }
 }
 

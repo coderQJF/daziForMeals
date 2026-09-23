@@ -32,4 +32,5 @@ export const serverConfig = {
   wechatAppId: process.env.WECHAT_APP_ID?.trim(),
   wechatAppSecret: process.env.WECHAT_APP_SECRET?.trim(),
   sessionSecret: process.env.SESSION_SECRET?.trim(),
+  opsAdminToken: process.env.OPS_ADMIN_TOKEN?.trim(),
 }

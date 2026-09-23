@@ -33,6 +33,7 @@ services:
       WECHAT_APP_ID: ${WECHAT_APP_ID:?Set WECHAT_APP_ID in backend/.env}
       WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:?Set WECHAT_APP_SECRET in backend/.env}
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in backend/.env}
+      OPS_ADMIN_TOKEN: ${OPS_ADMIN_TOKEN:-}
     depends_on:
       db:
         condition: service_healthy

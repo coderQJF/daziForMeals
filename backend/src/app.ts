@@ -1,6 +1,6 @@
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
-import { createHash } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import Fastify, { type FastifyInstance } from 'fastify'
@@ -16,6 +16,7 @@ export interface BuildAppOptions {
   wechatCodeExchange?: WechatCodeExchange
   avatarStorageDir?: string
   publicApiBaseUrl?: string
+  opsAdminToken?: string
 }
 
 class InvalidSessionError extends Error {}
@@ -116,6 +117,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   )
   const avatarStorageDir = options.avatarStorageDir ?? serverConfig.avatarStorageDir
   const publicApiBaseUrl = (options.publicApiBaseUrl ?? serverConfig.publicApiBaseUrl).replace(/\/+$/, '')
+  const operationsToken = (options.opsAdminToken ?? serverConfig.opsAdminToken ?? '').trim()
   const app = Fastify({
     logger: options.logger ?? serverConfig.isProduction,
     trustProxy: true,
@@ -168,6 +170,32 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     name: '饭搭子 API',
     version: 'v1',
   }))
+
+  function operationsError(authorization: string | undefined): { status: 401 | 503, message: string } | undefined {
+    if (!operationsToken) return { status: 503, message: '运营后台联动尚未配置' }
+    const actual = (authorization || '').replace(/^Bearer\s+/i, '')
+    const expectedDigest = Uint8Array.from(createHash('sha256').update(operationsToken).digest())
+    const actualDigest = Uint8Array.from(createHash('sha256').update(actual).digest())
+    if (!timingSafeEqual(actualDigest, expectedDigest)) return { status: 401, message: '运营凭证无效' }
+    return undefined
+  }
+
+  app.get('/api/v1/operations/summary', async (request, reply) => {
+    const error = operationsError(request.headers.authorization)
+    if (error) return reply.code(error.status).send({ error: { code: 'OPERATIONS_UNAUTHORIZED', message: error.message } })
+    return { data: await repository.operationsSummary() }
+  })
+
+  app.get('/api/v1/operations/users', async (request, reply) => {
+    const error = operationsError(request.headers.authorization)
+    if (error) return reply.code(error.status).send({ error: { code: 'OPERATIONS_UNAUTHORIZED', message: error.message } })
+    const query = request.query as Record<string, unknown>
+    const keyword = typeof query.q === 'string' ? query.q.slice(0, 80) : ''
+    const limit = Math.max(1, Math.min(100, Number(query.limit) || 50))
+    const offset = Math.max(0, Number(query.offset) || 0)
+    const result = await repository.operationsUsers(keyword, limit, offset)
+    return { data: result.items, meta: { total: result.total } }
+  })
 
   app.post('/api/v1/auth/wechat', async (request, reply) => {
     if (!wechatCodeExchange || !sessionSecret) {
