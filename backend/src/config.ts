@@ -24,6 +24,11 @@ function parseMiniProgramState(value: string | undefined): 'developer' | 'trial'
   return value === 'developer' || value === 'trial' ? value : 'formal'
 }
 
+function parseBoolean(value: string | undefined, fallback = false): boolean {
+  if (value === undefined || value.trim() === '') return fallback
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
 export const serverConfig = {
   host: process.env.HOST?.trim() || '0.0.0.0',
   port: parsePort(process.env.PORT),
@@ -35,6 +40,9 @@ export const serverConfig = {
   publicApiBaseUrl: process.env.PUBLIC_API_BASE_URL?.trim() || 'http://127.0.0.1:3000',
   wechatAppId: process.env.WECHAT_APP_ID?.trim(),
   wechatAppSecret: process.env.WECHAT_APP_SECRET?.trim(),
+  wechatPhoneBindingEnabled: parseBoolean(process.env.WECHAT_PHONE_BINDING_ENABLED),
+  wechatPhoneBindingUnavailableReason: process.env.WECHAT_PHONE_BINDING_UNAVAILABLE_REASON?.trim()
+    || '当前小程序为个人主体，微信暂不开放手机号授权；不影响登录和点菜',
   wechatMealNotificationTemplateId: process.env.WECHAT_MEAL_NOTIFICATION_TEMPLATE_ID?.trim(),
   wechatMealNotificationTitleKey: process.env.WECHAT_MEAL_NOTIFICATION_TITLE_KEY?.trim(),
   wechatMealNotificationTimeKey: process.env.WECHAT_MEAL_NOTIFICATION_TIME_KEY?.trim(),

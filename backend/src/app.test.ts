@@ -512,6 +512,44 @@ test('WeChat phone binding and meal notification use real account data without e
   }
 })
 
+test('WeChat phone binding capability can be disabled for an ineligible mini program subject', async () => {
+  const app = buildApp({
+    logger: false,
+    sessionSecret: mealSessionSecret,
+    wechatCodeExchange: async code => ({ openid: `openid-${code}` }),
+    wechatPlatformClient: {
+      async getPhoneNumber() {
+        throw new Error('disabled capability must not call WeChat')
+      },
+      async sendSubscribeMessage() {},
+    },
+    phoneNumberBindingEnabled: false,
+    phoneNumberBindingUnavailableReason: '当前主体不支持手机号授权',
+  })
+
+  try {
+    const capabilities = await app.inject({ method: 'GET', url: '/api/v1/wechat/capabilities' })
+    assert.equal(capabilities.statusCode, 200, capabilities.body)
+    assert.deepEqual(capabilities.json().data, {
+      phoneNumberBinding: false,
+      phoneNumberUnavailableReason: '当前主体不支持手机号授权',
+      mealNotification: null,
+    })
+
+    const token = await loginMealUser(app, 'phone-disabled-user', 'phone-disabled-device')
+    const phone = await app.inject({
+      method: 'POST',
+      url: '/api/v1/me/wechat-phone',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { code: 'unused-phone-code' },
+    })
+    assert.equal(phone.statusCode, 503, phone.body)
+    assert.equal(phone.json().error.message, '当前主体不支持手机号授权')
+  } finally {
+    await app.close()
+  }
+})
+
 test('meal slots follow Asia/Shanghai lunch and dinner boundaries', () => {
   const beforeLunch = resolveMealSlot(new Date('2026-10-09T03:59:59.999Z'))
   assert.equal(beforeLunch.mealType, 'lunch')

@@ -55,10 +55,15 @@ export function hasAuthToken(): boolean {
 export function apiRequest<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, data?: Record<string, unknown>): Promise<T> {
   return new Promise((resolve, reject) => {
     const token = uni.getStorageSync(AUTH_TOKEN_STORAGE_KEY)
+    // WeChat sends an empty body for `data: undefined`, but still marks mutation
+    // requests as JSON. Fastify correctly rejects that combination. Always send a
+    // valid JSON object for body-bearing methods so create/confirm/retry share the
+    // same reliable request contract.
+    const requestData = method === 'GET' ? data : (data ?? {})
     uni.request({
       url: `${API_BASE_URL}${path}`,
       method,
-      data,
+      data: requestData,
       header: getRequestHeaders(),
       timeout: 10000,
       success(response: UniApp.RequestSuccessCallbackResult) {

@@ -30,6 +30,8 @@ export interface BuildAppOptions {
   sessionSecret?: string
   wechatCodeExchange?: WechatCodeExchange
   wechatPlatformClient?: WechatPlatformClient
+  phoneNumberBindingEnabled?: boolean
+  phoneNumberBindingUnavailableReason?: string
   mealNotificationConfig?: MealNotificationConfig | null
   avatarStorageDir?: string
   publicApiBaseUrl?: string
@@ -213,6 +215,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       ? createWechatPlatformClient(serverConfig.wechatAppId, serverConfig.wechatAppSecret)
       : undefined
   )
+  const phoneNumberBindingEnabled = Boolean(wechatPlatformClient) && (
+    options.phoneNumberBindingEnabled
+      ?? (options.wechatPlatformClient !== undefined || serverConfig.wechatPhoneBindingEnabled)
+  )
+  const phoneNumberBindingUnavailableReason = options.phoneNumberBindingUnavailableReason
+    ?? serverConfig.wechatPhoneBindingUnavailableReason
   const configuredMealNotification = (
     serverConfig.wechatMealNotificationTemplateId
     && serverConfig.wechatMealNotificationTitleKey
@@ -353,7 +361,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   app.get('/api/v1/wechat/capabilities', async () => ({
     data: {
-      phoneNumberBinding: Boolean(wechatPlatformClient),
+      phoneNumberBinding: phoneNumberBindingEnabled,
+      ...(!phoneNumberBindingEnabled ? { phoneNumberUnavailableReason: phoneNumberBindingUnavailableReason } : {}),
       mealNotification: mealNotificationConfig
         ? { templateId: mealNotificationConfig.templateId }
         : null,
@@ -457,8 +466,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   app.post('/api/v1/me/wechat-phone', async (request, reply) => {
     const clientId = resolveAuthenticatedClientId(request.headers, sessionSecret)
-    if (!wechatPlatformClient) {
-      return reply.code(503).send({ error: { code: 'WECHAT_PHONE_NOT_CONFIGURED', message: '微信手机号能力尚未配置' } })
+    if (!wechatPlatformClient || !phoneNumberBindingEnabled) {
+      return reply.code(503).send({ error: { code: 'WECHAT_PHONE_NOT_CONFIGURED', message: phoneNumberBindingUnavailableReason } })
     }
     const body = request.body as Record<string, unknown> | undefined
     const code = typeof body?.code === 'string' ? body.code.trim() : ''

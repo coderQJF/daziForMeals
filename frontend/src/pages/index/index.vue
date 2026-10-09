@@ -23,6 +23,7 @@ const bootstrapped = ref(false)
 const avatarErrors = ref<string[]>([])
 const mealClock = ref(Date.now())
 const mealConfirmed = computed(() => meal.value?.status === 'confirmed')
+const mealCreationFailed = computed(() => Boolean(loggedIn.value && !meal.value && mealError.value))
 
 function targetMealCopy(now = new Date()) {
   const chinaNow = new Date(now.getTime() + 8 * 60 * 60 * 1000)
@@ -42,9 +43,16 @@ const activeMealCopy = computed(() => {
 
 const mealContext = computed(() => {
   if (meal.value) return `${meal.value.title} · ${memberCount.value} 人`
-  if (mealLoading.value) return '正在读取饭局…'
-  if (loggedIn.value && mealError.value) return `${activeMealCopy.value.title} · 创建失败，点此重试`
+  if (mealLoading.value) return `${activeMealCopy.value.title} · 正在准备…`
+  if (mealCreationFailed.value) return activeMealCopy.value.title
   return loggedIn.value ? `正在发起${activeMealCopy.value.title}…` : `登录后发起${activeMealCopy.value.period}`
+})
+
+const dockButtonLabel = computed(() => {
+  if (!loggedIn.value) return '微信登录'
+  if (mealLoading.value) return '正在准备…'
+  if (mealCreationFailed.value) return '重新创建'
+  return mealConfirmed.value ? '查看已定菜单' : '查看菜单'
 })
 
 const matchingRecipes = computed(() => {
@@ -96,7 +104,9 @@ function loginUrl() {
 function openLogin() { uni.navigateTo({ url: loginUrl() }) }
 
 async function retryMeal() {
-  if (loggedIn.value && !meal.value && !mealLoading.value) await mealStore.loadMeal(true)
+  if (!loggedIn.value || meal.value || mealLoading.value) return
+  const restored = await mealStore.loadMeal(true)
+  if (restored) uni.showToast({ title: '饭局已准备好', icon: 'success' })
 }
 
 async function withEditableMeal(action: () => Promise<boolean>) {
@@ -124,10 +134,11 @@ function toggleWish(id: number) { void withEditableMeal(() => mealStore.toggleWi
 
 async function openMenu() {
   if (!loggedIn.value) { openLogin(); return }
+  if (mealLoading.value) return
   if (!meal.value) await mealStore.loadMeal(true)
   if (!meal.value) { uni.showToast({ title: mealError.value || '当前餐次创建失败，请重试', icon: 'none' }); return }
-  if (!dishCount.value) { uni.showToast({ title: '先选一道想吃的菜吧', icon: 'none' }); return }
-  uni.navigateTo({ url: mealConfirmed.value ? '/pages/menu/confirmed' : '/pages/menu/menu' })
+  const mealId = encodeURIComponent(meal.value.id)
+  uni.navigateTo({ url: mealConfirmed.value ? `/pages/menu/confirmed?mealId=${mealId}` : `/pages/menu/menu?mealId=${mealId}` })
 }
 
 function memberInitial(name: string) { return name.trim().slice(0, 1) || '友' }
@@ -159,7 +170,10 @@ onShareAppMessage(() => ({
     <AppHeader title="选择菜品" :centered="true" :page-padding="24" />
 
     <view class="meal-bar">
-      <text class="meal-bar__title" @click="retryMeal">{{ mealContext }}</text>
+      <view class="meal-bar__status">
+        <text class="meal-bar__title">{{ mealContext }}</text>
+        <button v-if="mealCreationFailed" class="meal-retry" :loading="mealLoading" :disabled="mealLoading" @click="retryMeal">重新创建</button>
+      </view>
       <button v-if="!loggedIn" class="login-entry" @click="openLogin">未登录</button>
       <button v-else-if="!profileReady" class="login-entry" @click="openLogin">完善资料</button>
       <scroll-view v-else class="people-scroll" scroll-x :show-scrollbar="false">
@@ -222,7 +236,7 @@ onShareAppMessage(() => ({
 
     <view class="dock">
       <view class="dock__summary"><template v-if="loggedIn"><text>{{ mealConfirmed ? '菜单已定' : '已选' }} <text class="dock__number">{{ dishCount }}</text> 道</text><text class="dock__dot">·</text><text><text class="dock__number">{{ memberCount }}</text> 人参与</text></template><text v-else>微信登录后一起点菜</text></view>
-      <button class="dock__button" @click="openMenu">{{ loggedIn ? (mealConfirmed ? '查看已定菜单' : '查看菜单') : '微信登录' }}</button>
+      <button class="dock__button" :class="{ 'dock__button--retry': mealCreationFailed }" :loading="mealLoading" :disabled="mealLoading" @click="openMenu">{{ dockButtonLabel }}</button>
     </view>
   </view>
 </template>
@@ -234,8 +248,10 @@ onShareAppMessage(() => ({
 .page__glow { position: absolute; top: -130rpx; right: -150rpx; width: 500rpx; height: 430rpx; border-radius: 50%; background: radial-gradient(circle, rgba(255, 221, 177, .48), rgba(255, 247, 237, 0) 72%); pointer-events: none; }
 .meal-bar, .invite-notice, .hero, .search, .category-scroll, .section-title, .dish-grid, .state, .empty { position: relative; z-index: 1; }
 
-.meal-bar { display: flex; min-height: 74rpx; margin-top: 8rpx; align-items: center; justify-content: space-between; gap: 18rpx; }
-.meal-bar__title { flex: 0 0 auto; color: $color-text; font-size: 30rpx; font-weight: 750; }
+.meal-bar { display: flex; min-height: 78rpx; margin-top: 8rpx; align-items: center; justify-content: space-between; gap: 16rpx; }
+.meal-bar__status { display: flex; min-width: 0; flex: 1; align-items: center; gap: 12rpx; }
+.meal-bar__title { min-width: 0; overflow: hidden; color: $color-text; font-size: 29rpx; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.meal-retry { display: inline-flex; min-width: 132rpx; height: 58rpx; padding: 0 18rpx; flex: 0 0 auto; align-items: center; justify-content: center; border: 1rpx solid rgba(255, 144, 11, .28); border-radius: 29rpx; background: #fff4e5; color: $color-primary-deep; font-size: 24rpx; font-weight: 750; }
 .people-scroll { min-width: 0; max-width: 330rpx; height: 68rpx; white-space: nowrap; }
 .people-track { display: inline-flex; min-width: 100%; height: 68rpx; padding-left: 12rpx; align-items: center; justify-content: flex-end; box-sizing: border-box; }
 .avatar { display: inline-flex; width: 58rpx; height: 58rpx; margin-left: -10rpx; overflow: hidden; align-items: center; justify-content: center; border: 4rpx solid $color-page; border-radius: 50%; background: #e7f0db; color: #5b3b29; font-size: 24rpx; font-weight: 800; box-sizing: border-box; }
@@ -295,14 +311,16 @@ onShareAppMessage(() => ({
 .empty__copy { margin-top: 10rpx; color: $color-text-secondary; font-size: 24rpx; text-align: center; }
 .empty button { min-width: 220rpx; height: 72rpx; margin-top: 26rpx; border-radius: 36rpx; background: $color-primary; color: #fff; font-size: 26rpx; font-weight: 700; }
 
-.dock { position: fixed; z-index: 999; right: 20rpx; bottom: calc(env(safe-area-inset-bottom) + 18rpx); left: 20rpx; display: flex; min-height: 112rpx; padding: 12rpx 14rpx 12rpx 28rpx; align-items: center; justify-content: space-between; border: 1rpx solid rgba(133, 85, 47, .08); border-radius: 38rpx; background: rgba(255, 255, 255, .98); box-shadow: 0 14rpx 42rpx rgba(79, 48, 25, .14); box-sizing: border-box; }
+.dock { position: fixed; z-index: 999; right: 24rpx; bottom: calc(env(safe-area-inset-bottom) + 20rpx); left: 24rpx; display: flex; min-height: 104rpx; padding: 12rpx 14rpx 12rpx 26rpx; align-items: center; justify-content: space-between; border: 1rpx solid rgba(133, 85, 47, .08); border-radius: 30rpx; background: rgba(255, 255, 255, .98); box-shadow: 0 12rpx 36rpx rgba(79, 48, 25, .13); box-sizing: border-box; }
 .dock__summary { display: flex; min-width: 0; align-items: baseline; color: $color-text; font-size: 27rpx; font-weight: 750; }
 .dock__number { color: $color-primary-deep; font-size: 36rpx; font-weight: 900; }
 .dock__dot { margin: 0 9rpx; color: #b6aaa0; }
-.dock__button { min-width: 238rpx; height: 88rpx; padding: 0 30rpx; border-radius: 44rpx; background: linear-gradient(135deg, #ffac32, $color-primary-deep); box-shadow: 0 10rpx 22rpx rgba(255, 118, 0, .2); color: #fff; font-size: 29rpx; font-weight: 800; }
+.dock__button { min-width: 220rpx; height: 80rpx; padding: 0 28rpx; border-radius: 24rpx; background: linear-gradient(135deg, #ffac32, $color-primary-deep); box-shadow: 0 8rpx 18rpx rgba(255, 118, 0, .18); color: #fff; font-size: 28rpx; font-weight: 800; }
+.dock__button--retry { background: #fff1df; box-shadow: none; color: $color-primary-deep; }
+.dock__button[disabled] { opacity: .72; }
 
 @media (min-width: 500px) {
   .page { max-width: 750rpx; margin: 0 auto; }
-  .dock { right: calc((100vw - 750rpx) / 2 + 20rpx); left: calc((100vw - 750rpx) / 2 + 20rpx); }
+  .dock { right: calc((100vw - 750rpx) / 2 + 24rpx); left: calc((100vw - 750rpx) / 2 + 24rpx); }
 }
 </style>

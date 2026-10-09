@@ -25,6 +25,7 @@ const avatarTempPath = ref('')
 const avatarLoadFailed = ref(false)
 const joiningInvitation = ref(false)
 const invitedMealId = ref('')
+const phoneModeRequested = ref(false)
 const hasMealInvitation = computed(() => Boolean(mealStore.invitation))
 const capabilities = ref<Awaited<ReturnType<typeof authApi.getCapabilities>>>({
   phoneNumberBinding: false,
@@ -46,6 +47,7 @@ const subtitle = computed(() => {
 onLoad(async (options) => {
   checkPrivacySetting()
   mealStore.useInvitationOptions((options ?? {}) as Record<string, string | undefined>)
+  phoneModeRequested.value = options?.mode === 'phone'
   joiningInvitation.value = hasMealInvitation.value
   invitedMealId.value = mealStore.invitation?.mealId ?? ''
   try {
@@ -53,6 +55,7 @@ onLoad(async (options) => {
   } catch {
     // 登录本身不应被可选能力配置阻塞。
   }
+  if (phoneModeRequested.value && authenticated.value) currentStep.value = 'phone'
 })
 
 function checkPrivacySetting() {
@@ -137,6 +140,10 @@ function openProfileStep() {
 }
 
 async function continueAfterPhone() {
+  if (phoneModeRequested.value) {
+    goBack()
+    return
+  }
   if (!profileReady.value) {
     openProfileStep()
     return
@@ -152,7 +159,18 @@ async function bindPhone(event: any) {
   if (bindingPhone.value) return
   const code = event?.detail?.code
   if (typeof code !== 'string' || !code) {
-    errorMessage.value = '未获得手机号授权，你可以暂时跳过'
+    const errMsg = typeof event?.detail?.errMsg === 'string' ? event.detail.errMsg : ''
+    const errno = Number(event?.detail?.errno)
+    if (/deny|cancel/i.test(errMsg)) {
+      errorMessage.value = '你已取消手机号授权，可以暂时跳过'
+    } else if (/permission|access denied/i.test(errMsg) || errno === 102) {
+      errorMessage.value = capabilities.value.phoneNumberUnavailableReason
+        || '当前微信小程序暂不具备手机号授权权限'
+    } else if (/quota|limit/i.test(errMsg)) {
+      errorMessage.value = '手机号验证额度暂不可用，请稍后再试'
+    } else {
+      errorMessage.value = errMsg ? `微信未返回手机号：${errMsg}` : '未获得手机号授权，你可以暂时跳过'
+    }
     return
   }
   bindingPhone.value = true
@@ -246,11 +264,17 @@ async function finishLogin() {
       <view class="permission-card__icon">📱</view>
       <text class="permission-card__title">微信验证手机号</text>
       <text v-if="phoneBound" class="permission-card__status">已绑定 {{ phoneMasked }}</text>
-      <button v-if="!privacySettingReady" class="login-button login-button--permission" loading disabled>正在确认微信授权…</button>
-      <button v-else-if="privacyAuthorizationRequired" class="login-button login-button--permission" open-type="agreePrivacyAuthorization" @agreeprivacyauthorization="privacyAuthorized">同意隐私保护指引并继续</button>
-      <button v-else class="login-button login-button--permission" open-type="getPhoneNumber" :loading="bindingPhone" :disabled="bindingPhone" @getphonenumber="bindPhone">{{ bindingPhone ? '正在绑定…' : '选择微信手机号' }}</button>
-      <button class="privacy-link" @click="openPrivacyContract">查看《小程序用户隐私保护指引》</button>
-      <button class="skip-button" @click="continueAfterPhone">暂不绑定，继续点菜</button>
+      <template v-if="capabilities.phoneNumberBinding">
+        <button v-if="!privacySettingReady" class="login-button login-button--permission" loading disabled>正在确认微信授权…</button>
+        <button v-else-if="privacyAuthorizationRequired" class="login-button login-button--permission" open-type="agreePrivacyAuthorization" @agreeprivacyauthorization="privacyAuthorized">同意隐私保护指引并继续</button>
+        <button v-else class="login-button login-button--permission" open-type="getPhoneNumber" :loading="bindingPhone" :disabled="bindingPhone" @getphonenumber="bindPhone">{{ bindingPhone ? '正在绑定…' : '选择微信手机号' }}</button>
+        <button class="privacy-link" @click="openPrivacyContract">查看《小程序用户隐私保护指引》</button>
+        <button class="skip-button" @click="continueAfterPhone">暂不绑定，继续点菜</button>
+      </template>
+      <template v-else>
+        <text class="permission-card__unavailable">{{ capabilities.phoneNumberUnavailableReason || '当前小程序暂不支持微信手机号授权，微信登录和点菜不受影响' }}</text>
+        <button class="login-button login-button--permission" @click="continueAfterPhone">知道了</button>
+      </template>
     </view>
 
     <view v-else-if="profileStep" class="profile-form">
@@ -295,6 +319,7 @@ async function finishLogin() {
 .permission-card__icon { display: flex; width: 86rpx; height: 86rpx; align-items: center; justify-content: center; border-radius: 50%; background: #eaf6e5; font-size: 42rpx; }
 .permission-card__title { margin-top: 18rpx; color: $color-text; font-size: 30rpx; font-weight: 800; }
 .permission-card__status { margin-top: 10rpx; color: $color-text-secondary; font-size: 24rpx; }
+.permission-card__unavailable { margin-top: 20rpx; color: $color-text-secondary; font-size: 25rpx; line-height: 1.6; text-align: center; }
 .login-button--permission { margin-top: 30rpx; background: $color-success; }
 .skip-button { min-width: 260rpx; min-height: 68rpx; margin-top: 14rpx; color: $color-text-secondary; font-size: 25rpx; }
 .privacy-link { min-height: 58rpx; margin-top: 10rpx; color: $color-primary-deep; font-size: 24rpx; text-decoration: underline; }

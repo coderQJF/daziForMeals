@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onShow } from '@dcloudio/uni-app'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import AppHeader from '@/components/AppHeader.vue'
 import { experienceApi } from '@/services/experience'
+import { authApi, type WechatCapabilities } from '@/services/auth'
 import { hasAuthToken } from '@/services/http'
 import { useRecipeStore } from '@/stores/recipe'
 
@@ -15,6 +16,11 @@ const avatarTempPath = ref('')
 const avatarLoadFailed = ref(false)
 const saving = ref(false)
 const errorMessage = ref('')
+const capabilities = ref<WechatCapabilities>({ phoneNumberBinding: false, mealNotification: null })
+const phoneLabel = computed(() => {
+  if (phoneBound.value) return phoneMasked.value
+  return capabilities.value.phoneNumberBinding ? '去绑定' : '个人主体暂不可用'
+})
 
 function goBack() {
   if (getCurrentPages().length > 1) uni.navigateBack()
@@ -29,7 +35,20 @@ function chooseAvatar(event: any) {
 }
 
 function manageWechatAccount() {
-  uni.navigateTo({ url: '/pages/login/login' })
+  if (phoneBound.value) {
+    uni.showToast({ title: `已绑定 ${phoneMasked.value}`, icon: 'none' })
+    return
+  }
+  if (!capabilities.value.phoneNumberBinding) {
+    uni.showModal({
+      title: '暂时无法获取微信手机号',
+      content: capabilities.value.phoneNumberUnavailableReason || '当前小程序暂不具备微信手机号授权权限，不影响微信登录和点菜。',
+      showCancel: false,
+      confirmText: '知道了',
+    })
+    return
+  }
+  uni.navigateTo({ url: '/pages/login/login?mode=phone' })
 }
 
 async function saveProfile() {
@@ -66,6 +85,11 @@ onShow(async () => {
     return
   }
   await recipeStore.loadUserState(true)
+  try {
+    capabilities.value = await authApi.getCapabilities()
+  } catch {
+    capabilities.value = { phoneNumberBinding: false, mealNotification: null }
+  }
   nickname.value = profile.value.nickname
   bio.value = profile.value.bio
   avatarTempPath.value = ''
@@ -106,7 +130,7 @@ onShow(async () => {
       </label>
       <button class="field account-field" @click="manageWechatAccount">
         <text class="field__label">微信手机号</text>
-        <text class="account-field__value">{{ phoneBound ? phoneMasked : '未绑定' }}</text>
+        <text class="account-field__value">{{ phoneLabel }}</text>
         <text class="account-field__chevron">›</text>
       </button>
     </view>

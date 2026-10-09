@@ -9,6 +9,7 @@ export interface AuthSession {
 
 export interface WechatCapabilities {
   phoneNumberBinding: boolean
+  phoneNumberUnavailableReason?: string
   mealNotification: null | {
     templateId: string
   }
