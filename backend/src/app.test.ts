@@ -430,7 +430,8 @@ test('WeChat phone binding and meal notification use real account data without e
       templateId: 'meal-template-id',
       titleKey: 'thing1',
       timeKey: 'time2',
-      menuKey: 'thing3',
+      menuKey: 'thing4',
+      statusKey: 'phrase3',
       miniProgramState: 'trial',
     },
   })
@@ -505,8 +506,10 @@ test('WeChat phone binding and meal notification use real account data without e
     assert.equal(sentMessages[0]?.templateId, 'meal-template-id')
     assert.equal(sentMessages[0]?.page, `pages/menu/confirmed?mealId=${meal.id}`)
     assert.equal(sentMessages[0]?.miniProgramState, 'trial')
-    assert.equal(sentMessages[0]?.data.thing1?.value, meal.title)
-    assert.equal(sentMessages[0]?.data.thing3?.value, selectedRecipeName)
+    assert.equal(sentMessages[0]?.data.thing1?.value, '晚餐菜单')
+    assert.match(sentMessages[0]?.data.time2?.value ?? '', /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+    assert.equal(sentMessages[0]?.data.phrase3?.value, '菜单已定')
+    assert.equal(sentMessages[0]?.data.thing4?.value, selectedRecipeName)
   } finally {
     await app.close()
   }

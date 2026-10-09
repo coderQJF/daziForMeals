@@ -269,9 +269,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       minute: '2-digit',
       hourCycle: 'h23',
     }).format(mealAt).replace(/\//g, '-').replace(/\s+/g, ' ')
+    const mealType = meal.mealType === 'lunch' ? '午餐菜单' : '晚餐菜单'
     const menu = meal.dishes.map(item => item.recipe.name).join('、').slice(0, 20) || '菜单已确定'
     const data: Record<string, { value: string }> = {
-      [mealNotificationConfig.titleKey]: { value: meal.title.slice(0, 20) },
+      [mealNotificationConfig.titleKey]: { value: mealType },
       [mealNotificationConfig.timeKey]: { value: chinaTime },
     }
     if (mealNotificationConfig.menuKey) data[mealNotificationConfig.menuKey] = { value: menu }

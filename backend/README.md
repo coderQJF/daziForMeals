@@ -47,7 +47,7 @@ pnpm dev:backend
 
 未登录客户端通过 `x-client-id` 区分设备。微信登录成功后，客户端改用服务端签名会话；首次登录会将当前设备的真实收藏、喜欢、做过、身体状态、计划菜谱和资料复制到微信账号，之后不会用其他设备数据覆盖账号已有数据。全新微信用户默认昵称为“微信用户”，头像、简介和行为数组均为空；旧版未修改过的演示默认会在登录时清理。状态保存在 PostgreSQL 的 `fandazi_user_state` 表中，微信 `session_key` 不会下发到客户端。
 
-手机号使用微信 `getPhoneNumber` 动态令牌在服务端换取并保存，API 只向小程序返回脱敏号码。该能力需要小程序为已认证的非个人主体，并在微信公众平台的《小程序用户隐私保护指引》中声明手机号等实际收集信息；满足条件后再将 `WECHAT_PHONE_BINDING_ENABLED` 设为 `true`。个人主体保持关闭，小程序会明确说明限制并继续使用微信登录，不展示一个必然失败的取号按钮。菜单通知使用一次性订阅消息：小程序将 `mealId`、模板 ID 和授权结果提交到 `POST /api/v1/me/notification-subscriptions`，服务端验证用户为该饭局成员后仅为该餐保存授权。需先在微信公众平台选用模板，再配置 `WECHAT_MEAL_NOTIFICATION_TEMPLATE_ID` 及模板实际的标题、时间、菜单、状态字段 key（菜单和状态可按模板省略）；体验版设置 `WECHAT_MINIPROGRAM_STATE=trial`，正式发布改为 `formal`。每次用户同意仅供本餐发送一次，发送成功后服务端会消费该订阅状态，消息点击会按 `mealId` 打开对应的已定菜单。
+手机号使用微信 `getPhoneNumber` 动态令牌在服务端换取并保存，API 只向小程序返回脱敏号码。该能力需要小程序为已认证的非个人主体，并在微信公众平台的《小程序用户隐私保护指引》中声明手机号等实际收集信息；满足条件后再将 `WECHAT_PHONE_BINDING_ENABLED` 设为 `true`。个人主体保持关闭，小程序会明确说明限制并继续使用微信登录，不展示一个必然失败的取号按钮。菜单通知使用一次性订阅消息：小程序将 `mealId`、模板 ID 和授权结果提交到 `POST /api/v1/me/notification-subscriptions`，服务端验证用户为该饭局成员后仅为该餐保存授权。当前“菜谱确认提醒”模板依次使用 `thing1`（午餐/晚餐菜单）、`time2`（实际用餐时间）、`phrase3`（菜单状态）和 `thing4`（真实菜品摘要）；对应配置见 `backend/.env.example`。体验版设置 `WECHAT_MINIPROGRAM_STATE=trial`，正式发布改为 `formal`。每次用户同意仅供本餐发送一次，发送成功后服务端会消费该订阅状态，消息点击会按 `mealId` 打开对应的已定菜单。
 
 未设置 `DATABASE_URL` 时，本地开发和自动化测试使用内存种子数据；Docker 部署会连接内部 PostgreSQL。当前代码维护的菜谱种子会按稳定菜谱 ID 更新，用户行为数据不会被重启覆盖。
 
