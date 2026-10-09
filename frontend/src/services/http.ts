@@ -49,7 +49,7 @@ export function hasAuthToken(): boolean {
   return Boolean(uni.getStorageSync(AUTH_TOKEN_STORAGE_KEY))
 }
 
-export function apiRequest<T>(method: 'GET' | 'POST' | 'PUT', path: string, data?: Record<string, unknown>): Promise<T> {
+export function apiRequest<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, data?: Record<string, unknown>): Promise<T> {
   return new Promise((resolve, reject) => {
     const token = uni.getStorageSync(AUTH_TOKEN_STORAGE_KEY)
     uni.request({

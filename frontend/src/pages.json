@@ -5,6 +5,23 @@
       "style": {
         "navigationStyle": "custom",
         "enablePullDownRefresh": true,
+        "enableShareAppMessage": true,
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/menu/menu",
+      "style": {
+        "navigationStyle": "custom",
+        "enableShareAppMessage": true,
+        "backgroundColor": "#FFF7ED"
+      }
+    },
+    {
+      "path": "pages/menu/confirmed",
+      "style": {
+        "navigationStyle": "custom",
+        "enableShareAppMessage": true,
         "backgroundColor": "#FFF7ED"
       }
     },

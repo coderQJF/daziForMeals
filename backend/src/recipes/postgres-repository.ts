@@ -1,7 +1,7 @@
 import pg from 'pg'
 import { categorySeeds, getSeedTaggings, recipeSeeds, recipeTagSeeds, statusSeeds, type SeedRecipe } from './seed.js'
 import { takeoutShops } from '../experience/seed.js'
-import { createDefaultUserState, mapCategory, mapPlanPayload, mapSeedRecipe, sanitizeUserRecipeIds, selectRecommendation } from './repository.js'
+import { createDefaultUserState, isLegacyDemoUserState, mapCategory, mapPlanPayload, mapSeedRecipe, sanitizeUserRecipeIds, selectRecommendation } from './repository.js'
 import type { BootstrapPayload, Category, Recipe, RecipeQuery, RecipeRepository, StatusOption, TakeoutShop, UserState, UserStateUpdate } from './types.js'
 
 const { Pool } = pg
@@ -340,13 +340,27 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
     },
     async claimUserState(sourceClientId, userClientId) {
       const source = await getOrCreateUserState(sourceClientId)
-      const claimed = { ...source, clientId: userClientId }
-      await pool.query(
+      const claimed = isLegacyDemoUserState(source)
+        ? createDefaultUserState(userClientId, assetBaseUrl)
+        : { ...source, clientId: userClientId }
+      const inserted = await pool.query<{ client_id: string }>(
         `INSERT INTO fandazi_user_state (client_id, payload, actions_migrated)
          VALUES ($1, $2::jsonb, FALSE)
-         ON CONFLICT (client_id) DO NOTHING`,
+         ON CONFLICT (client_id) DO NOTHING
+         RETURNING client_id`,
         [userClientId, JSON.stringify(claimed)],
       )
+      if (inserted.rowCount) return getOrCreateUserState(userClientId)
+
+      const existing = await getOrCreateUserState(userClientId)
+      if (!isLegacyDemoUserState(existing)) return existing
+      await pool.query(
+        `UPDATE fandazi_user_state
+         SET payload = $2::jsonb, actions_migrated = FALSE, updated_at = NOW()
+         WHERE client_id = $1`,
+        [userClientId, JSON.stringify(claimed)],
+      )
+      await replaceUserActions(userClientId, claimed)
       return getOrCreateUserState(userClientId)
     },
     async getPlan(clientId, date) {

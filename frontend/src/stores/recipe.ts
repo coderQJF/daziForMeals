@@ -1,6 +1,5 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { assetUrl } from '@/config/assets'
 import { experienceApi } from '@/services/experience'
 import { recipeApi } from '@/services/recipes'
 import type { UserProfile, UserStateUpdate } from '@/types/experience'
@@ -43,14 +42,14 @@ export const useRecipeStore = defineStore('recipe', () => {
   const bootstrapLoaded = ref(false)
   const loading = ref(false)
   const errorMessage = ref('')
-  const favoriteIds = ref<number[]>(uni.getStorageSync('favoriteRecipeIds') || [2001, 2002, 2003])
+  const favoriteIds = ref<number[]>(uni.getStorageSync('favoriteRecipeIds') || [])
   const plannedRecipeIds = ref<number[]>(uni.getStorageSync('plannedRecipeIds') || [])
-  const cookedRecipeIds = ref<number[]>(uni.getStorageSync('cookedRecipeIds') || [2001])
+  const cookedRecipeIds = ref<number[]>(uni.getStorageSync('cookedRecipeIds') || [])
   const likedRecipeIds = ref<number[]>(uni.getStorageSync('likedRecipeIds') || [])
   const profile = ref<UserProfile>(uni.getStorageSync('userProfile') || {
-    nickname: '早睡早起吃饭饭 ☀️',
-    bio: '享受每一餐，认真生活每一天～',
-    avatar: assetUrl('images/user/avatar-female.png'),
+    nickname: '微信用户',
+    bio: '',
+    avatar: '',
   })
   const userLoaded = ref(false)
   const userLoading = ref(false)
@@ -64,6 +63,11 @@ export const useRecipeStore = defineStore('recipe', () => {
     likes: likedRecipeIds.value.length,
     cooked: cookedRecipeIds.value.length,
   }))
+  const profileReady = computed(() => Boolean(
+    profile.value.avatar
+    && profile.value.nickname.trim()
+    && profile.value.nickname !== '微信用户',
+  ))
 
   function applyUserState(state: Awaited<ReturnType<typeof experienceApi.getUser>>) {
     selectedStatus.value = state.selectedStatus
@@ -302,6 +306,7 @@ export const useRecipeStore = defineStore('recipe', () => {
     cookedRecipeIds,
     likedRecipeIds,
     profile,
+    profileReady,
     userStats,
     userLoaded,
     userLoading,

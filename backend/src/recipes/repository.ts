@@ -1,24 +1,38 @@
 import { categorySeeds, getSeedTaggings, recipeSeeds, statusSeeds, type SeedRecipe } from './seed.js'
-import { defaultProfile, planMealSeeds, planReminders, planSummary, takeoutShops } from '../experience/seed.js'
+import { planMealSeeds, planReminders, planSummary, takeoutShops } from '../experience/seed.js'
 import type { BootstrapPayload, Category, PlanPayload, Recipe, RecipeQuery, RecipeRepository, UserState, UserStateUpdate } from './types.js'
 
 export function createAssetUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 
-export function createDefaultUserState(clientId: string, assetBaseUrl: string): UserState {
+export function createDefaultUserState(clientId: string, _assetBaseUrl: string): UserState {
   return {
     clientId,
     selectedStatus: 'recover',
-    favoriteRecipeIds: [2001, 2002, 2003],
+    favoriteRecipeIds: [],
     likedRecipeIds: [],
-    cookedRecipeIds: [2001],
+    cookedRecipeIds: [],
     plannedRecipeIds: [],
     profile: {
-      ...defaultProfile,
-      avatar: createAssetUrl(assetBaseUrl, 'images/user/avatar-female.png'),
+      nickname: '微信用户',
+      bio: '',
+      avatar: '',
     },
   }
+}
+
+export function isLegacyDemoUserState(state: UserState): boolean {
+  return state.selectedStatus === 'recover'
+    && state.favoriteRecipeIds.length === 3
+    && [2001, 2002, 2003].every(id => state.favoriteRecipeIds.includes(id))
+    && state.likedRecipeIds.length === 0
+    && state.cookedRecipeIds.length === 1
+    && state.cookedRecipeIds[0] === 2001
+    && state.plannedRecipeIds.length === 0
+    && state.profile.nickname === '早睡早起吃饭饭 ☀️'
+    && state.profile.bio === '享受每一餐，认真生活每一天～'
+    && state.profile.avatar.endsWith('/images/user/avatar-female.png')
 }
 
 export function mapPlanPayload(recipes: Recipe[], state: UserState, date: string): PlanPayload {
@@ -153,8 +167,11 @@ export function createMemoryRecipeRepository(assetBaseUrl: string): RecipeReposi
     },
     async claimUserState(sourceClientId, userClientId) {
       const existing = userStates.get(userClientId)
-      if (existing) return structuredClone(existing)
-      const claimed = { ...structuredClone(getState(sourceClientId)), clientId: userClientId }
+      if (existing && !isLegacyDemoUserState(existing)) return structuredClone(existing)
+      const source = structuredClone(getState(sourceClientId))
+      const claimed = isLegacyDemoUserState(source)
+        ? createDefaultUserState(userClientId, assetBaseUrl)
+        : { ...source, clientId: userClientId }
       userStates.set(userClientId, claimed)
       return structuredClone(claimed)
     },

@@ -3,15 +3,26 @@ import multipart from '@fastify/multipart'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { LogController, type FastifyInstance } from 'fastify'
 import { createSessionToken, createWechatCodeExchange, createWechatSubject, verifySessionToken, WechatLoginError, type WechatCodeExchange } from './auth/wechat.js'
 import { serverConfig } from './config.js'
+import { createMemoryMealRepository } from './meals/repository.js'
+import {
+  InvalidInviteError,
+  MealAccessDeniedError,
+  MealNotFoundError,
+  MealValidationError,
+  type MealCategoryInput,
+  type MealCreateInput,
+  type MealRepository,
+} from './meals/types.js'
 import { createMemoryRecipeRepository } from './recipes/repository.js'
 import type { RecipeQuery, RecipeRepository, UserDashboard, UserState, UserStateUpdate } from './recipes/types.js'
 
 export interface BuildAppOptions {
   logger?: boolean
   repository?: RecipeRepository
+  mealRepository?: MealRepository
   sessionSecret?: string
   wechatCodeExchange?: WechatCodeExchange
   avatarStorageDir?: string
@@ -42,6 +53,15 @@ function resolveAuthenticatedClientId(headers: Record<string, unknown>, sessionS
   if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ') || !sessionSecret) {
     throw new InvalidSessionError()
   }
+  const subject = verifySessionToken(authorization.slice('Bearer '.length), sessionSecret)
+  if (!subject) throw new InvalidSessionError()
+  return subject
+}
+
+function resolveOptionalAuthenticatedClientId(headers: Record<string, unknown>, sessionSecret: string | undefined): string | undefined {
+  const authorization = headers.authorization
+  if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ')) return undefined
+  if (!sessionSecret) throw new InvalidSessionError()
   const subject = verifySessionToken(authorization.slice('Bearer '.length), sessionSecret)
   if (!subject) throw new InvalidSessionError()
   return subject
@@ -107,8 +127,78 @@ function parseUserStateUpdate(body: unknown): UserStateUpdate {
   return update
 }
 
+function nextDinnerAt(now = new Date()): Date {
+  const chinaNow = new Date(now.getTime() + 8 * 60 * 60 * 1000)
+  const dinner = new Date(Date.UTC(
+    chinaNow.getUTCFullYear(),
+    chinaNow.getUTCMonth(),
+    chinaNow.getUTCDate(),
+    10,
+    30,
+  ))
+  if (dinner.getTime() <= now.getTime()) dinner.setUTCDate(dinner.getUTCDate() + 1)
+  return dinner
+}
+
+function dinnerTitle(mealAt: Date): string {
+  const weekday = new Intl.DateTimeFormat('zh-CN', {
+    weekday: 'short',
+    timeZone: 'Asia/Shanghai',
+  }).format(mealAt)
+  return `${weekday}晚餐`
+}
+
+function parseMealCreateInput(body: unknown): MealCreateInput {
+  const payload = body && typeof body === 'object' && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : {}
+  const defaultMealAt = nextDinnerAt()
+  const mealAt = payload.mealAt === undefined ? defaultMealAt : new Date(String(payload.mealAt))
+  if (Number.isNaN(mealAt.getTime())) throw new MealValidationError('用餐时间格式无效')
+  if (payload.mealType !== undefined && payload.mealType !== 'dinner') {
+    throw new MealValidationError('当前仅支持晚餐')
+  }
+  const requestedTitle = typeof payload.title === 'string' ? payload.title.trim() : ''
+  if (requestedTitle.length > 40) throw new MealValidationError('饭局名称不能超过 40 个字')
+  return {
+    title: requestedTitle || dinnerTitle(mealAt),
+    mealAt: mealAt.toISOString(),
+    mealType: 'dinner',
+  }
+}
+
+function parseRecipeId(value: unknown): number {
+  const recipeId = Number(value)
+  if (!Number.isInteger(recipeId) || recipeId < 1) throw new MealValidationError('菜谱编号无效')
+  return recipeId
+}
+
+function parseMealCategoryInput(body: unknown): MealCategoryInput {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new MealValidationError('菜类数据格式无效')
+  const payload = body as Record<string, unknown>
+  const id = typeof payload.id === 'string' ? payload.id.trim() : ''
+  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
+  const sortOrder = Number(payload.sortOrder)
+  if (!/^[a-z][a-z0-9-]{0,39}$/.test(id)) throw new MealValidationError('菜类编号格式无效')
+  if (!name || name.length > 20) throw new MealValidationError('菜类名称格式无效')
+  if (!Number.isInteger(sortOrder) || sortOrder < -10000 || sortOrder > 10000) throw new MealValidationError('菜类排序值无效')
+  if (typeof payload.enabled !== 'boolean') throw new MealValidationError('菜类启用状态无效')
+  if (!Array.isArray(payload.recipeIds) || payload.recipeIds.some(value => typeof value !== 'number')) {
+    throw new MealValidationError('菜谱编号列表格式无效')
+  }
+  let recipeIds: number[] | undefined
+  try {
+    recipeIds = parseIdList(payload.recipeIds)
+  } catch {
+    throw new MealValidationError('菜谱编号列表格式无效')
+  }
+  if (!recipeIds) throw new MealValidationError('请提供菜类关联的菜谱')
+  return { id, name, sortOrder, enabled: payload.enabled, recipeIds }
+}
+
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const repository = options.repository ?? createMemoryRecipeRepository(serverConfig.assetBaseUrl)
+  const mealRepository = options.mealRepository ?? createMemoryMealRepository(repository)
   const sessionSecret = options.sessionSecret ?? serverConfig.sessionSecret
   const wechatCodeExchange = options.wechatCodeExchange ?? (
     serverConfig.wechatAppId && serverConfig.wechatAppSecret
@@ -121,6 +211,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({
     logger: options.logger ?? serverConfig.isProduction,
     trustProxy: true,
+    logController: new LogController({
+      disableRequestLogging: request => (
+        serverConfig.isProduction
+        && /[?&]invite(?:Code)?=/.test(request.url)
+      ),
+    }),
   })
 
   async function persistAvatar(clientId: string, buffer: Uint8Array<ArrayBuffer>, extension: 'jpg' | 'png') {
@@ -149,12 +245,27 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (error instanceof InvalidSessionError) {
       return reply.code(401).send({ error: { code: 'INVALID_SESSION', message: '登录已过期，请重新登录' } })
     }
+    if (error instanceof MealNotFoundError) {
+      return reply.code(404).send({ error: { code: 'MEAL_NOT_FOUND', message: error.message } })
+    }
+    if (error instanceof InvalidInviteError) {
+      return reply.code(403).send({ error: { code: 'INVALID_INVITE', message: error.message } })
+    }
+    if (error instanceof MealAccessDeniedError) {
+      return reply.code(403).send({ error: { code: 'MEAL_ACCESS_DENIED', message: error.message } })
+    }
+    if (error instanceof MealValidationError) {
+      return reply.code(400).send({ error: { code: 'INVALID_MEAL_DATA', message: error.message } })
+    }
     request.log.error(error)
     return reply.send(error)
   })
 
   if (repository.close) {
     app.addHook('onClose', async () => repository.close?.())
+  }
+  if (mealRepository.close) {
+    app.addHook('onClose', async () => mealRepository.close?.())
   }
 
   const healthPayload = () => ({
@@ -197,6 +308,43 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     return { data: result.items, meta: { total: result.total } }
   })
 
+  app.get('/api/v1/operations/meal-categories', async (request, reply) => {
+    const error = operationsError(request.headers.authorization)
+    if (error) return reply.code(error.status).send({ error: { code: 'OPERATIONS_UNAUTHORIZED', message: error.message } })
+    const items = await mealRepository.listCategories(true)
+    return { data: items, meta: { total: items.length } }
+  })
+
+  app.get('/api/v1/operations/recipes', async (request, reply) => {
+    const error = operationsError(request.headers.authorization)
+    if (error) return reply.code(error.status).send({ error: { code: 'OPERATIONS_UNAUTHORIZED', message: error.message } })
+    const query = request.query as Record<string, unknown>
+    const requestedLimit = Number(query.limit)
+    const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, 500)
+      : 200
+    const items = await repository.list({ sort: 'default', limit })
+    return { data: items, meta: { total: items.length } }
+  })
+
+  app.put('/api/v1/operations/meal-categories', async (request, reply) => {
+    const operationsFailure = operationsError(request.headers.authorization)
+    if (operationsFailure) return reply.code(operationsFailure.status).send({ error: { code: 'OPERATIONS_UNAUTHORIZED', message: operationsFailure.message } })
+    const input = parseMealCategoryInput(request.body)
+    return { data: await mealRepository.upsertCategory(input) }
+  })
+
+  app.delete('/api/v1/operations/meal-categories', async (request, reply) => {
+    const operationsFailure = operationsError(request.headers.authorization)
+    if (operationsFailure) return reply.code(operationsFailure.status).send({ error: { code: 'OPERATIONS_UNAUTHORIZED', message: operationsFailure.message } })
+    const query = request.query as Record<string, unknown>
+    const id = typeof query.id === 'string' ? query.id.trim() : ''
+    if (!/^[a-z][a-z0-9-]{0,39}$/.test(id)) throw new MealValidationError('菜类编号格式无效')
+    const deleted = await mealRepository.deleteCategory(id)
+    if (!deleted) return reply.code(404).send({ error: { code: 'MEAL_CATEGORY_NOT_FOUND', message: '菜类不存在' } })
+    return { data: { id, deleted: true } }
+  })
+
   app.post('/api/v1/auth/wechat', async (request, reply) => {
     if (!wechatCodeExchange || !sessionSecret) {
       return reply.code(503).send({ error: { code: 'WECHAT_LOGIN_NOT_CONFIGURED', message: '微信登录尚未配置' } })
@@ -232,6 +380,91 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     const query = request.query as Record<string, unknown>
     const status = typeof query.status === 'string' && query.status ? query.status : 'recover'
     return { data: await repository.bootstrap(resolveClientId(request.headers, sessionSecret), status) }
+  })
+
+  app.get('/api/v1/meal-categories', async () => {
+    const items = await mealRepository.listCategories(false)
+    return { data: items, meta: { total: items.length } }
+  })
+
+  app.get('/api/v1/meals/current', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    return { data: (await mealRepository.getCurrent(userId)) ?? null }
+  })
+
+  app.post('/api/v1/meals', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    return { data: await mealRepository.createMeal(userId, parseMealCreateInput(request.body)) }
+  })
+
+  app.get('/api/v1/meals/:id', async (request) => {
+    const { id } = request.params as { id: string }
+    const query = request.query as Record<string, unknown>
+    const inviteCode = typeof query.invite === 'string'
+      ? query.invite
+      : typeof query.inviteCode === 'string' ? query.inviteCode : undefined
+    const currentUserId = resolveOptionalAuthenticatedClientId(request.headers, sessionSecret)
+    return { data: await mealRepository.getMeal(id, currentUserId, inviteCode) }
+  })
+
+  app.post('/api/v1/meals/:id/join', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const { id } = request.params as { id: string }
+    const body = request.body as Record<string, unknown> | undefined
+    const inviteCode = typeof body?.inviteCode === 'string' ? body.inviteCode.trim() : ''
+    if (!inviteCode) throw new InvalidInviteError()
+    return { data: await mealRepository.joinMeal(id, userId, inviteCode) }
+  })
+
+  app.put('/api/v1/meals/:id/confirm', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const { id } = request.params as { id: string }
+    return { data: await mealRepository.confirmMeal(id, userId) }
+  })
+
+  app.put('/api/v1/meals/:id/wishes/:recipeId', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const { id, recipeId } = request.params as { id: string, recipeId: string }
+    return { data: await mealRepository.setWish(id, userId, parseRecipeId(recipeId)) }
+  })
+
+  app.delete('/api/v1/meals/:id/wishes/:recipeId', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const { id, recipeId } = request.params as { id: string, recipeId: string }
+    return { data: await mealRepository.removeWish(id, userId, parseRecipeId(recipeId)) }
+  })
+
+  app.put('/api/v1/meals/:id/dishes/:recipeId', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const { id, recipeId } = request.params as { id: string, recipeId: string }
+    const body = request.body as Record<string, unknown> | undefined
+    const quantity = Number(body?.quantity)
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+      throw new MealValidationError('菜品数量需在 1 到 20 之间')
+    }
+    return { data: await mealRepository.setDish(id, userId, parseRecipeId(recipeId), quantity) }
+  })
+
+  app.delete('/api/v1/meals/:id/dishes/:recipeId', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const { id, recipeId } = request.params as { id: string, recipeId: string }
+    return { data: await mealRepository.removeDish(id, userId, parseRecipeId(recipeId)) }
+  })
+
+  app.post('/api/v1/meals/:id/dishes/:recipeId/quantity', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const { id, recipeId } = request.params as { id: string, recipeId: string }
+    const body = request.body as Record<string, unknown> | undefined
+    const delta = Number(body?.delta)
+    if (delta !== 1 && delta !== -1) throw new MealValidationError('菜品数量变化值无效')
+    return {
+      data: await mealRepository.addDishQuantity(
+        id,
+        userId,
+        parseRecipeId(recipeId),
+        delta as 1 | -1,
+      ),
+    }
   })
 
   app.get('/api/v1/recipes', async (request) => {

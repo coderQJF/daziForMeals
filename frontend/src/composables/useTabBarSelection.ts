@@ -10,6 +10,7 @@ interface PageWithCustomTabBar {
 
 export function useTabBarSelection(selected: number) {
   onShow(() => {
+    uni.showTabBar({ animation: false, fail: () => undefined })
     const pages = getCurrentPages()
     const page = pages[pages.length - 1] as unknown as PageWithCustomTabBar
     page?.getTabBar?.()?.setData({ selected })

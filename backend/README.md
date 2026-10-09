@@ -17,6 +17,16 @@ pnpm dev:backend
 - `GET /api/v1/health`
 - `GET /api/v1`
 - `POST /api/v1/auth/wechat`
+- `GET /api/v1/meal-categories`
+- `GET /api/v1/operations/recipes?limit=200` (`OPS_ADMIN_TOKEN`)
+- `GET /api/v1/meals/current`
+- `POST /api/v1/meals`
+- `GET /api/v1/meals/:id?invite=...`
+- `POST /api/v1/meals/:id/join`
+- `PUT /api/v1/meals/:id/confirm`
+- `PUT|DELETE /api/v1/meals/:id/dishes/:recipeId`
+- `POST /api/v1/meals/:id/dishes/:recipeId/quantity`
+- `PUT|DELETE /api/v1/meals/:id/wishes/:recipeId`
 - `GET /api/v1/bootstrap?status=recover`
 - `GET /api/v1/recipes?category=soup&q=汤&status=recover&sort=default&limit=20`
 - `GET /api/v1/recipes/random?status=recover&exclude=1001,2002`
@@ -26,11 +36,20 @@ pnpm dev:backend
 - `GET /api/v1/plan?date=2026-09-08`
 - `GET /api/v1/takeout?category=hot-pot`
 
-未登录客户端通过 `x-client-id` 区分设备。微信登录成功后，客户端改用服务端签名会话；首次登录会将当前设备的收藏、喜欢、做过、身体状态和计划菜谱复制到微信账号，之后不会用其他设备数据覆盖账号已有数据。状态保存在 PostgreSQL 的 `fandazi_user_state` 表中，微信 `session_key` 不会下发到客户端。
+饭局创建、加入和所有写操作均要求微信登录会话。邀请链接可以匿名预览饭局，登录后通过邀请码加入；成员人数不设上限。邀请在用餐时间 12 小时后过期，非成员预览响应不返回真实邀请码，生产环境也不记录携带邀请码的 Fastify 自动请求日志。
+
+`GET /api/v1/meals/current` 读取用户最近创建或加入时持久选中的饭局；按中国日期判断，用餐日期已过时返回 `null`，今日或已创建的下一顿饭返回 `active`/`confirmed` 饭局。同一创建者在同一中国日期并发创建只会产生一个 `active` 饭局。确认后不再允许加入、修改菜品或修改“想吃”。菜品数量通过 `{ "delta": 1 }` 或 `{ "delta": -1 }` 在服务端原子更新。
+
+菜类通过 `GET /api/v1/meal-categories` 实时读取，运营后台使用 `OPS_ADMIN_TOKEN` 调用 `GET|PUT|DELETE /api/v1/operations/meal-categories` 管理菜类及其菜谱关联。`GET /api/v1/operations/recipes?limit=200` 返回 `{ "data": Recipe[], "meta": { "total": number } }`，供后台完整加载关联候选菜谱，`limit` 上限为 500。
+
+未登录客户端通过 `x-client-id` 区分设备。微信登录成功后，客户端改用服务端签名会话；首次登录会将当前设备的真实收藏、喜欢、做过、身体状态、计划菜谱和资料复制到微信账号，之后不会用其他设备数据覆盖账号已有数据。全新微信用户默认昵称为“微信用户”，头像、简介和行为数组均为空；旧版未修改过的演示默认会在登录时清理。状态保存在 PostgreSQL 的 `fandazi_user_state` 表中，微信 `session_key` 不会下发到客户端。
 
 未设置 `DATABASE_URL` 时，本地开发和自动化测试使用内存种子数据；Docker 部署会连接内部 PostgreSQL。当前代码维护的菜谱种子会按稳定菜谱 ID 更新，用户行为数据不会被重启覆盖。
 
 ## 菜单数据模型
+
+- `fandazi_meal`、`fandazi_meal_member`、`fandazi_meal_dish` 和 `fandazi_meal_wish` 保存真实饭局、不限人数成员、菜品数量和逐用户“想吃”。
+- `fandazi_user_current_meal` 持久保存用户最近选中的饭局；`fandazi_meal_category` 和 `fandazi_meal_category_recipe` 保存运营后台可立即生效的菜类及菜谱关联。
 
 - `fandazi_recipe` 是做菜内容的主库。分类、推荐、详情和饮食计划都通过稳定 `recipe_id` 引用它，不再在计划数据中复制菜名和图片。
 - `fandazi_tag` 与 `fandazi_recipe_tag` 保存菜谱的多对多标签。状态标签和营养/场景标签分型保存；关联同时记录 `weight`、`source`（`manual`/`ai`）与 `confidence`，以后可以混用人工和 AI 标注而不改表结构。

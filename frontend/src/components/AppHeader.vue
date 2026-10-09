@@ -9,6 +9,7 @@ const props = withDefaults(defineProps<{
   actionBackground?: string
   pagePadding?: number
   showBack?: boolean
+  centered?: boolean
 }>(), {
   subtitle: '',
   actionIcon: '',
@@ -16,10 +17,13 @@ const props = withDefaults(defineProps<{
   actionBackground: 'transparent',
   pagePadding: 32,
   showBack: false,
+  centered: false,
 })
 
 const emit = defineEmits<{ action: []; back: [] }>()
-const capsuleStyle = ref<Record<string, string>>({})
+const capsuleStyle = ref<Record<string, string>>({
+  '--app-header-capsule-reserve': '0px',
+})
 const actionStyle = computed(() => ({ background: props.actionBackground }))
 
 onMounted(() => {
@@ -34,6 +38,7 @@ onMounted(() => {
   capsuleStyle.value = {
     paddingTop: `${capsule.top}px`,
     paddingRight: `${reserveRight}px`,
+    '--app-header-capsule-reserve': `${reserveRight}px`,
   }
   // #endif
 })
@@ -41,7 +46,7 @@ onMounted(() => {
 
 <template>
   <view class="app-header" :style="capsuleStyle">
-    <view class="app-header__row">
+    <view class="app-header__row" :class="{ 'app-header__row--centered': centered }">
       <button v-if="showBack" class="app-header__back" aria-label="返回" @click="emit('back')">
         <view class="app-header__back-icon" />
       </button>
@@ -77,10 +82,20 @@ onMounted(() => {
 }
 
 .app-header__row {
+  position: relative;
   display: flex;
   min-height: 72rpx;
   align-items: center;
   justify-content: space-between;
+}
+
+.app-header__row--centered .app-header__copy {
+  position: absolute;
+  right: calc(76rpx - var(--app-header-capsule-reserve, 0px));
+  left: 76rpx;
+  align-items: center;
+  pointer-events: none;
+  text-align: center;
 }
 
 .app-header__copy {
