@@ -1,7 +1,7 @@
 import pg from 'pg'
 import { categorySeeds, getSeedTaggings, recipeSeeds, recipeTagSeeds, statusSeeds, type SeedRecipe } from './seed.js'
 import { takeoutShops } from '../experience/seed.js'
-import { createDefaultUserState, isLegacyDemoUserState, mapCategory, mapPlanPayload, mapSeedRecipe, sanitizeUserRecipeIds, selectRecommendation } from './repository.js'
+import { createDefaultUserState, isLegacyDemoUserState, mapCategory, mapPlanPayload, mapSeedRecipe, normalizeNotificationSubscriptions, sanitizeUserRecipeIds, selectRecommendation } from './repository.js'
 import type { BootstrapPayload, Category, Recipe, RecipeQuery, RecipeRepository, StatusOption, TakeoutShop, UserState, UserStateUpdate } from './types.js'
 
 const { Pool } = pg
@@ -13,6 +13,12 @@ const actionFields: Record<UserRecipeAction, keyof Pick<UserState, 'favoriteReci
   liked: 'likedRecipeIds',
   cooked: 'cookedRecipeIds',
   planned: 'plannedRecipeIds',
+}
+
+function maskPhoneNumber(phoneNumber: string | undefined): string {
+  if (!phoneNumber) return ''
+  if (phoneNumber.length <= 7) return `${phoneNumber.slice(0, 2)}***${phoneNumber.slice(-2)}`
+  return `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-4)}`
 }
 
 export async function createPostgresRecipeRepository(databaseUrl: string, assetBaseUrl: string): Promise<RecipeRepository> {
@@ -280,6 +286,17 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
     return hydrateUserActions(state)
   }
 
+  async function saveUserStatePayload(state: UserState): Promise<UserState> {
+    const result = await pool.query<{ payload: UserState }>(
+      `UPDATE fandazi_user_state
+       SET payload = $2::jsonb, updated_at = NOW()
+       WHERE client_id = $1
+       RETURNING payload`,
+      [state.clientId, JSON.stringify(state)],
+    )
+    return hydrateUserActions(result.rows[0]?.payload ?? state)
+  }
+
   async function recommendRecipe(clientId: string, status: string, excludeIds: number[] = []): Promise<Recipe> {
     const recent = await pool.query<{ recipe_id: number }>(
       `SELECT recipe_id FROM fandazi_recommendation_history
@@ -363,6 +380,56 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
       await replaceUserActions(userClientId, claimed)
       return getOrCreateUserState(userClientId)
     },
+    async setWechatIdentity(clientId, identity) {
+      const current = await getOrCreateUserState(clientId)
+      return saveUserStatePayload({
+        ...current,
+        wechat: {
+          ...current.wechat,
+          openid: identity.openid,
+          ...(identity.unionid ? { unionid: identity.unionid } : {}),
+          notificationSubscriptions: normalizeNotificationSubscriptions(current.wechat),
+        },
+      })
+    },
+    async setWechatPhone(clientId, phone) {
+      const current = await getOrCreateUserState(clientId)
+      if (!current.wechat?.openid) throw new Error('请重新完成微信登录后再绑定手机号')
+      return saveUserStatePayload({
+        ...current,
+        wechat: {
+          ...current.wechat,
+          phone: { ...phone, boundAt: new Date().toISOString() },
+        },
+      })
+    },
+    async setNotificationSubscription(clientId, mealId, templateId, subscribed) {
+      const current = await getOrCreateUserState(clientId)
+      if (!current.wechat?.openid) throw new Error('请重新完成微信登录后再开启通知')
+      const subscriptions = normalizeNotificationSubscriptions(current.wechat)
+        .filter(item => item.mealId !== mealId || item.templateId !== templateId)
+      if (subscribed) subscriptions.push({ mealId, templateId })
+      return saveUserStatePayload({
+        ...current,
+        wechat: { ...current.wechat, notificationSubscriptions: subscriptions },
+      })
+    },
+    async getNotificationRecipients(clientIds, mealId, templateId) {
+      if (!clientIds.length) return []
+      const result = await pool.query<{ client_id: string, payload: UserState }>(
+        `SELECT client_id, payload
+         FROM fandazi_user_state
+         WHERE client_id = ANY($1::TEXT[])`,
+        [[...new Set(clientIds)]],
+      )
+      return result.rows.flatMap((row) => {
+        const account = row.payload.wechat
+        return account?.openid && normalizeNotificationSubscriptions(account)
+          .some(item => item.mealId === mealId && item.templateId === templateId)
+          ? [{ clientId: row.client_id, openid: account.openid }]
+          : []
+      })
+    },
     async getPlan(clientId, date) {
       return mapPlanPayload(recipes, await getOrCreateUserState(clientId), date)
     },
@@ -403,6 +470,7 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
           id: row.client_id,
           accountType: row.client_id.startsWith('wechat:') ? 'wechat' as const : 'guest' as const,
           nickname: row.payload.profile.nickname,
+          phoneMasked: maskPhoneNumber(row.payload.wechat?.phone?.purePhoneNumber),
           favorites: row.payload.favoriteRecipeIds.length,
           likes: row.payload.likedRecipeIds.length,
           cooked: row.payload.cookedRecipeIds.length,

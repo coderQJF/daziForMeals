@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { buildApp } from './app.js'
+import type { WechatPlatformClient, WechatSubscribeMessageInput } from './auth/wechat-platform.js'
+import { mealTitle, resolveMealSlot } from './meals/schedule.js'
+import type { MealType } from './meals/types.js'
 
 function concatBytes(...parts: Uint8Array<ArrayBuffer>[]): Uint8Array<ArrayBuffer> {
   const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0))
@@ -43,7 +46,7 @@ function mealApp() {
   })
 }
 
-function chinaMealAt(dayOffset = 0, hour = 18): string {
+function chinaMealAt(dayOffset = 0, hour = 19): string {
   const chinaNow = new Date(Date.now() + 8 * 60 * 60 * 1000)
   return new Date(Date.UTC(
     chinaNow.getUTCFullYear(),
@@ -58,12 +61,13 @@ async function createMealFor(
   token: string,
   mealAt = chinaMealAt(),
   title = '家庭晚餐',
+  mealType: MealType = 'dinner',
 ) {
   const response = await app.inject({
     method: 'POST',
     url: '/api/v1/meals',
     headers: { authorization: `Bearer ${token}` },
-    payload: { title, mealAt, mealType: 'dinner' },
+    payload: { title, mealAt, mealType },
   })
   assert.equal(response.statusCode, 200, response.body)
   return response.json().data
@@ -399,6 +403,220 @@ test('WeChat login reports missing server configuration', async () => {
   await app.close()
 })
 
+test('WeChat phone binding and meal notification use real account data without exposing secrets', async () => {
+  const sentMessages: WechatSubscribeMessageInput[] = []
+  let resolveMessageSent: (() => void) | undefined
+  const messageSent = new Promise<void>((resolve) => { resolveMessageSent = resolve })
+  const wechatPlatformClient: WechatPlatformClient = {
+    async getPhoneNumber(code) {
+      assert.equal(code, 'phone-dynamic-code')
+      return { phoneNumber: '+8613812345678', purePhoneNumber: '13812345678', countryCode: '86' }
+    },
+    async sendSubscribeMessage(input) {
+      sentMessages.push(input)
+      resolveMessageSent?.()
+    },
+  }
+  const app = buildApp({
+    logger: false,
+    sessionSecret: mealSessionSecret,
+    wechatCodeExchange: async code => ({
+      openid: code === 'phone-notification-user'
+        ? 'openid-phone-notification-user'
+        : `openid-${code}`,
+    }),
+    wechatPlatformClient,
+    mealNotificationConfig: {
+      templateId: 'meal-template-id',
+      titleKey: 'thing1',
+      timeKey: 'time2',
+      menuKey: 'thing3',
+      miniProgramState: 'trial',
+    },
+  })
+
+  try {
+    const capabilities = await app.inject({ method: 'GET', url: '/api/v1/wechat/capabilities' })
+    assert.equal(capabilities.statusCode, 200, capabilities.body)
+    assert.deepEqual(capabilities.json().data, {
+      phoneNumberBinding: true,
+      mealNotification: { templateId: 'meal-template-id' },
+    })
+
+    const token = await loginMealUser(app, 'phone-notification-user', 'phone-notification-device')
+    const headers = { authorization: `Bearer ${token}` }
+    const phone = await app.inject({
+      method: 'POST',
+      url: '/api/v1/me/wechat-phone',
+      headers,
+      payload: { code: 'phone-dynamic-code' },
+    })
+    assert.equal(phone.statusCode, 200, phone.body)
+    assert.equal(phone.json().data.phoneBound, true)
+    assert.equal(phone.json().data.phoneMasked, '138****5678')
+    assert.equal(phone.json().data.wechat, undefined)
+    assert.doesNotMatch(phone.body, /13812345678|openid-phone-notification-user/)
+
+    const meal = await createMealFor(app, token)
+    const selected = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/meals/${meal.id}/wishes/1001`,
+      headers,
+    })
+    assert.equal(selected.statusCode, 200, selected.body)
+    const selectedRecipeName = selected.json().data.dishes[0].recipe.name
+    const subscribed = await app.inject({
+      method: 'POST',
+      url: '/api/v1/me/notification-subscriptions',
+      headers,
+      payload: { mealId: meal.id, templateId: 'meal-template-id', subscribed: true },
+    })
+    assert.equal(subscribed.statusCode, 200, subscribed.body)
+
+    const otherOwnerToken = await loginMealUser(app, 'other-notification-owner', 'other-notification-device')
+    const otherMeal = await createMealFor(app, otherOwnerToken, meal.mealAt, '另一顿饭', meal.mealType)
+    const joinedOtherMeal = await app.inject({
+      method: 'POST',
+      url: `/api/v1/meals/${otherMeal.id}/join`,
+      headers,
+      payload: { inviteCode: otherMeal.inviteCode },
+    })
+    assert.equal(joinedOtherMeal.statusCode, 200, joinedOtherMeal.body)
+    const confirmedOtherMeal = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/meals/${otherMeal.id}/confirm`,
+      headers,
+    })
+    assert.equal(confirmedOtherMeal.statusCode, 200, confirmedOtherMeal.body)
+    assert.equal(sentMessages.length, 0, 'another meal must not consume this meal subscription')
+
+    const confirmed = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/meals/${meal.id}/confirm`,
+      headers,
+    })
+    assert.equal(confirmed.statusCode, 200, confirmed.body)
+    await Promise.race([
+      messageSent,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('notification was not dispatched')), 1000)),
+    ])
+    assert.equal(sentMessages.length, 1)
+    assert.equal(sentMessages[0]?.openid, 'openid-phone-notification-user')
+    assert.equal(sentMessages[0]?.templateId, 'meal-template-id')
+    assert.equal(sentMessages[0]?.page, `pages/menu/confirmed?mealId=${meal.id}`)
+    assert.equal(sentMessages[0]?.miniProgramState, 'trial')
+    assert.equal(sentMessages[0]?.data.thing1?.value, meal.title)
+    assert.equal(sentMessages[0]?.data.thing3?.value, selectedRecipeName)
+  } finally {
+    await app.close()
+  }
+})
+
+test('meal slots follow Asia/Shanghai lunch and dinner boundaries', () => {
+  const beforeLunch = resolveMealSlot(new Date('2026-10-09T03:59:59.999Z'))
+  assert.equal(beforeLunch.mealType, 'lunch')
+  assert.equal(beforeLunch.mealAt.toISOString(), '2026-10-09T04:00:00.000Z')
+  assert.equal(mealTitle(beforeLunch.mealAt, beforeLunch.mealType), '周五午餐')
+
+  const atLunch = resolveMealSlot(new Date('2026-10-09T04:00:00.000Z'))
+  assert.equal(atLunch.mealType, 'dinner')
+  assert.equal(atLunch.mealAt.toISOString(), '2026-10-09T11:00:00.000Z')
+
+  const beforeDinner = resolveMealSlot(new Date('2026-10-09T10:59:59.999Z'))
+  assert.equal(beforeDinner.mealType, 'dinner')
+  assert.equal(beforeDinner.mealAt.toISOString(), '2026-10-09T11:00:00.000Z')
+
+  const atDinner = resolveMealSlot(new Date('2026-10-09T11:00:00.000Z'))
+  assert.equal(atDinner.mealType, 'lunch')
+  assert.equal(atDinner.mealAt.toISOString(), '2026-10-10T04:00:00.000Z')
+})
+
+test('a logged-in user creates the current slot and can order alone without an invitation', async () => {
+  const app = mealApp()
+
+  try {
+    const token = await loginMealUser(app, 'solo-owner', 'solo-owner-device')
+    const headers = { authorization: `Bearer ${token}` }
+    const breakfast = await app.inject({
+      method: 'POST',
+      url: '/api/v1/meals',
+      headers,
+      payload: { mealType: 'breakfast' },
+    })
+    assert.equal(breakfast.statusCode, 400, breakfast.body)
+    assert.equal(breakfast.json().error.code, 'INVALID_MEAL_DATA')
+
+    const expectedSlot = resolveMealSlot()
+    const created = await app.inject({ method: 'POST', url: '/api/v1/meals', headers, payload: {} })
+    assert.equal(created.statusCode, 200, created.body)
+    const meal = created.json().data
+    assert.equal(meal.mealType, expectedSlot.mealType)
+    assert.equal(meal.mealAt, expectedSlot.mealAt.toISOString())
+    assert.equal(meal.title, mealTitle(expectedSlot.mealAt, expectedSlot.mealType))
+    assert.equal(meal.members.length, 1)
+    assert.equal(meal.members[0].role, 'owner')
+
+    const selected = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/meals/${meal.id}/wishes/1001`,
+      headers,
+    })
+    assert.equal(selected.statusCode, 200, selected.body)
+    assert.equal(selected.json().data.dishes[0].recipe.id, 1001)
+    assert.equal(selected.json().data.dishes[0].wishCount, 1)
+  } finally {
+    await app.close()
+  }
+})
+
+test('current meal is recovered from slot membership after another slot overwrites the pointer', async () => {
+  const app = mealApp()
+
+  try {
+    const slot = resolveMealSlot()
+    const sharedOwnerToken = await loginMealUser(app, 'slot-shared-owner', 'slot-shared-owner-device')
+    const memberToken = await loginMealUser(app, 'slot-member', 'slot-member-device')
+    const memberHeaders = { authorization: `Bearer ${memberToken}` }
+    const sharedMeal = await createMealFor(
+      app,
+      sharedOwnerToken,
+      slot.mealAt.toISOString(),
+      '共享当前餐',
+      slot.mealType,
+    )
+    const joined = await app.inject({
+      method: 'POST',
+      url: `/api/v1/meals/${sharedMeal.id}/join`,
+      headers: memberHeaders,
+      payload: { inviteCode: sharedMeal.inviteCode },
+    })
+    assert.equal(joined.statusCode, 200, joined.body)
+
+    const futureMealAt = slot.mealType === 'lunch'
+      ? new Date(slot.mealAt.getTime() + 7 * 60 * 60 * 1000)
+      : new Date(slot.mealAt.getTime() + 17 * 60 * 60 * 1000)
+    const futureMealType: MealType = slot.mealType === 'lunch' ? 'dinner' : 'lunch'
+    await createMealFor(app, memberToken, futureMealAt.toISOString(), '自己的下一餐', futureMealType)
+
+    const recovered = await app.inject({ method: 'GET', url: '/api/v1/meals/current', headers: memberHeaders })
+    assert.equal(recovered.statusCode, 200, recovered.body)
+    assert.equal(recovered.json().data.id, sharedMeal.id)
+
+    const ownCurrent = await createMealFor(
+      app,
+      memberToken,
+      slot.mealAt.toISOString(),
+      '自己的当前餐',
+      slot.mealType,
+    )
+    const selectedOwnCurrent = await app.inject({ method: 'GET', url: '/api/v1/meals/current', headers: memberHeaders })
+    assert.equal(selectedOwnCurrent.statusCode, 200, selectedOwnCurrent.body)
+    assert.equal(selectedOwnCurrent.json().data.id, ownCurrent.id)
+  } finally {
+    await app.close()
+  }
+})
+
 test('meal invitations authorize unlimited members and aggregate real dishes and wishes', async () => {
   const app = mealApp()
 
@@ -417,20 +635,22 @@ test('meal invitations authorize unlimited members and aggregate real dishes and
     assert.equal(initialCurrent.statusCode, 200)
     assert.equal(initialCurrent.json().data, null)
 
+    const invitationSlot = resolveMealSlot()
+    const invitationTitle = mealTitle(invitationSlot.mealAt, invitationSlot.mealType)
     const created = await app.inject({
       method: 'POST',
       url: '/api/v1/meals',
       headers: ownerHeaders,
       payload: {
-        title: '周五晚餐',
-        mealAt: chinaMealAt(),
-        mealType: 'dinner',
+        title: invitationTitle,
+        mealAt: invitationSlot.mealAt.toISOString(),
+        mealType: invitationSlot.mealType,
       },
     })
     assert.equal(created.statusCode, 200, created.body)
     const meal = created.json().data
-    assert.equal(meal.title, '周五晚餐')
-    assert.equal(meal.mealType, 'dinner')
+    assert.equal(meal.title, invitationTitle)
+    assert.equal(meal.mealType, invitationSlot.mealType)
     assert.equal(meal.members.length, 1)
     assert.equal(meal.members[0].role, 'owner')
     assert.equal(meal.isMember, true)
@@ -534,7 +754,7 @@ test('meal invitations authorize unlimited members and aggregate real dishes and
   }
 })
 
-test('meal creation is idempotent for the same owner and China calendar date', async () => {
+test('meal creation is idempotent for the same owner and China meal slot', async () => {
   const app = mealApp()
 
   try {
@@ -545,6 +765,10 @@ test('meal creation is idempotent for the same owner and China calendar date', a
     assert.equal(second.id, first.id)
     assert.equal(second.title, '第一次创建')
     assert.equal(second.status, 'active')
+
+    const sameDayLunch = await createMealFor(app, token, chinaMealAt(0, 12), '同日午餐', 'lunch')
+    assert.notEqual(sameDayLunch.id, first.id)
+    assert.equal(sameDayLunch.mealType, 'lunch')
 
     const concurrent = await Promise.all([
       createMealFor(app, token, chinaMealAt(0, 19), '并发创建 A'),
@@ -570,12 +794,19 @@ test('meal creation is idempotent for the same owner and China calendar date', a
   }
 })
 
-test('current meal exposes today or future selected meals and rolls past meals off in China', async () => {
+test('current meal follows the active Asia/Shanghai meal slot', async () => {
   const app = mealApp()
 
   try {
+    const targetSlot = resolveMealSlot()
     const activeToken = await loginMealUser(app, 'current-active', 'current-active-device')
-    const activeMeal = await createMealFor(app, activeToken)
+    const activeMeal = await createMealFor(
+      app,
+      activeToken,
+      targetSlot.mealAt.toISOString(),
+      '当前餐次',
+      targetSlot.mealType,
+    )
     const activeCurrent = await app.inject({
       method: 'GET',
       url: '/api/v1/meals/current',
@@ -586,7 +817,13 @@ test('current meal exposes today or future selected meals and rolls past meals o
     assert.equal(activeCurrent.json().data.status, 'active')
 
     const confirmedToken = await loginMealUser(app, 'current-confirmed', 'current-confirmed-device')
-    const confirmedMeal = await createMealFor(app, confirmedToken)
+    const confirmedMeal = await createMealFor(
+      app,
+      confirmedToken,
+      targetSlot.mealAt.toISOString(),
+      '当前已定餐次',
+      targetSlot.mealType,
+    )
     const confirmed = await app.inject({
       method: 'PUT',
       url: `/api/v1/meals/${confirmedMeal.id}/confirm`,
@@ -613,14 +850,14 @@ test('current meal exposes today or future selected meals and rolls past meals o
     assert.equal(expiredCurrent.json().data, null)
 
     const futureToken = await loginMealUser(app, 'current-future', 'current-future-device')
-    const futureMeal = await createMealFor(app, futureToken, chinaMealAt(1), 'next dinner')
+    await createMealFor(app, futureToken, chinaMealAt(1), 'next dinner')
     const futureCurrent = await app.inject({
       method: 'GET',
       url: '/api/v1/meals/current',
       headers: { authorization: `Bearer ${futureToken}` },
     })
     assert.equal(futureCurrent.statusCode, 200, futureCurrent.body)
-    assert.equal(futureCurrent.json().data.id, futureMeal.id)
+    assert.equal(futureCurrent.json().data, null)
   } finally {
     await app.close()
   }

@@ -5,13 +5,17 @@ import { computed, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { dishImageFor, mealDishKindFor, type MealDishKind } from '@/config/dish-images'
 import { mealSharePath } from '@/config/meal-share'
+import { authApi } from '@/services/auth'
+import { requestMealNotification } from '@/services/wechat'
 import { useMealStore } from '@/stores/meal'
+import type { MealDish } from '@/types/meal'
 
 const mealStore = useMealStore()
 const {
   meal,
   members,
   memberCount,
+  loggedIn,
   selectedDishes,
   dishCount,
   mealLoading: pageLoading,
@@ -21,6 +25,33 @@ const {
 const avatarErrors = ref<string[]>([])
 const confirming = ref(false)
 const redirecting = ref(false)
+const mealNotificationTemplateId = ref('')
+const notificationAccepted = ref(false)
+const subscribingNotification = ref(false)
+const requestedMealId = ref('')
+
+function notificationStorageKey(mealId = meal.value?.id) {
+  return mealId && mealNotificationTemplateId.value
+    ? `fandaziMealNotification:${mealId}:${mealNotificationTemplateId.value}`
+    : ''
+}
+
+function restoreNotificationState() {
+  const key = notificationStorageKey()
+  notificationAccepted.value = Boolean(key && uni.getStorageSync(key))
+}
+
+const headerTitle = computed(() => {
+  if (meal.value?.title.includes('午餐')) return '午餐菜单'
+  if (meal.value?.title.includes('晚餐')) return '晚餐菜单'
+  return '查看菜单'
+})
+
+const memberSummary = computed(() => {
+  if (!memberCount.value) return '还没有饭搭子加入'
+  if (memberCount.value === 1) return '这顿饭先从自己开始'
+  return `${memberCount.value} 位饭搭子正在一起点`
+})
 
 const dishStats = computed(() => {
   const stats: Record<MealDishKind, number> = {
@@ -50,11 +81,65 @@ const pairingText = computed(() => {
   return '这一餐很丰富'
 })
 
+function wishLabel(item: MealDish) {
+  if (!item.wishCount) return '已加入菜单'
+  if (item.wishers.some(wisher => wisher.userId === meal.value?.currentUserId)) {
+    return item.wishCount === 1 ? '你想吃' : `你和其他 ${item.wishCount - 1} 人想吃`
+  }
+  const names = item.wishers.slice(0, 2).map(wisher => wisher.nickname).filter(Boolean)
+  if (!names.length) return `${item.wishCount} 人想吃`
+  return item.wishCount > names.length
+    ? `${names.join('、')}等 ${item.wishCount} 人想吃`
+    : `${names.join('、')}想吃`
+}
+
 async function loadMenu(force = false) {
-  await mealStore.loadMeal(force)
+  if (requestedMealId.value) await mealStore.loadMealById(requestedMealId.value, force)
+  else await mealStore.loadMeal(force)
+  restoreNotificationState()
   if (meal.value?.status === 'confirmed' && !redirecting.value) {
     redirecting.value = true
-    uni.redirectTo({ url: '/pages/menu/confirmed' })
+    uni.redirectTo({ url: `/pages/menu/confirmed?mealId=${encodeURIComponent(meal.value.id)}` })
+  }
+}
+
+async function loadWechatCapabilities() {
+  try {
+    const capabilities = await authApi.getCapabilities()
+    mealNotificationTemplateId.value = capabilities.mealNotification?.templateId ?? ''
+    restoreNotificationState()
+  } catch {
+    mealNotificationTemplateId.value = ''
+  }
+}
+
+async function subscribeForMeal(showFeedback = true) {
+  const mealId = meal.value?.id
+  if (!mealId || !mealNotificationTemplateId.value || subscribingNotification.value) return false
+  const storageKey = notificationStorageKey(mealId)
+  subscribingNotification.value = true
+  try {
+    const result = await requestMealNotification(mealId, mealNotificationTemplateId.value)
+    const accepted = result === 'accepted'
+    if (storageKey) {
+      if (accepted) uni.setStorageSync(storageKey, true)
+      else uni.removeStorageSync(storageKey)
+    }
+    if (meal.value?.id === mealId) notificationAccepted.value = accepted
+    if (showFeedback) {
+      uni.showToast({
+        title: accepted ? '本餐通知已开启' : '未开启通知',
+        icon: accepted ? 'success' : 'none',
+      })
+    }
+    return accepted
+  } catch (error) {
+    if (showFeedback) {
+      uni.showToast({ title: error instanceof Error ? error.message : '通知授权未完成', icon: 'none' })
+    }
+    return false
+  } finally {
+    subscribingNotification.value = false
   }
 }
 
@@ -80,14 +165,20 @@ async function confirmMenu() {
     uni.showToast({ title: '先选几道想吃的菜吧', icon: 'none' })
     return
   }
+  const mealId = meal.value?.id
+  if (!mealId) return
   confirming.value = true
+  if (mealNotificationTemplateId.value && !notificationAccepted.value) await subscribeForMeal(false)
   const confirmed = await mealStore.confirmMeal()
   confirming.value = false
   if (!confirmed) {
     uni.showToast({ title: errorMessage.value || '菜单确认失败，请重试', icon: 'none' })
     return
   }
-  uni.redirectTo({ url: '/pages/menu/confirmed' })
+  const confirmedMealId = meal.value?.id ?? mealId
+  const notificationKey = notificationStorageKey(confirmedMealId)
+  if (notificationKey) uni.removeStorageSync(notificationKey)
+  uni.redirectTo({ url: `/pages/menu/confirmed?mealId=${encodeURIComponent(confirmedMealId)}` })
 }
 
 function memberInitial(nickname: string) {
@@ -102,7 +193,11 @@ function canShowAvatar(userId: string, avatar: string) {
   return Boolean(avatar && !avatarErrors.value.includes(userId))
 }
 
-onLoad(() => void loadMenu(true))
+onLoad((options) => {
+  requestedMealId.value = typeof options?.mealId === 'string' ? options.mealId.trim() : ''
+  void loadWechatCapabilities()
+  void loadMenu(true)
+})
 onShow(() => {
   mealStore.refreshAuth()
   void loadMenu(true)
@@ -121,7 +216,7 @@ onShareAppMessage(() => ({
     <view class="menu-page__glow" />
 
     <AppHeader
-      title="今晚菜单"
+      :title="headerTitle"
       :show-back="true"
       :centered="true"
       :page-padding="30"
@@ -140,32 +235,42 @@ onShareAppMessage(() => ({
       </template>
     </AppHeader>
 
-    <view class="party-card">
+    <view v-if="meal" class="party-card">
       <view class="party-card__mascot-wrap">
         <image class="party-card__mascot" src="/static/images/home/meal-mascot.png" mode="aspectFit" />
       </view>
       <view class="party-card__content">
         <text class="party-card__title">{{ meal?.title || '今晚晚餐' }} · {{ memberCount }} 人</text>
         <view class="party-card__people">
-          <view class="avatar-list">
-            <view
-              v-for="member in members"
-              :key="member.userId"
-              class="avatar"
-            >
-              <image
-                v-if="canShowAvatar(member.userId, member.avatar)"
-                class="avatar__image"
-                :src="member.avatar"
-                mode="aspectFill"
-                @error="markAvatarError(member.userId)"
-              />
-              <text v-else>{{ memberInitial(member.nickname) }}</text>
+          <scroll-view class="avatar-scroll" scroll-x :show-scrollbar="false">
+            <view class="avatar-list">
+              <view
+                v-for="member in members"
+                :key="member.userId"
+                class="avatar"
+              >
+                <image
+                  v-if="canShowAvatar(member.userId, member.avatar)"
+                  class="avatar__image"
+                  :src="member.avatar"
+                  mode="aspectFill"
+                  @error="markAvatarError(member.userId)"
+                />
+                <text v-else>{{ memberInitial(member.nickname) }}</text>
+              </view>
             </view>
-          </view>
+          </scroll-view>
           <button class="invite-button" open-type="share">邀请</button>
         </view>
-        <text class="party-card__hint">{{ memberCount }} 位饭搭子正在一起点</text>
+        <text class="party-card__hint">{{ memberSummary }}</text>
+        <button
+          v-if="mealNotificationTemplateId && meal?.status === 'active'"
+          class="party-card__notice"
+          :class="{ 'party-card__notice--active': notificationAccepted }"
+          :loading="subscribingNotification"
+          :disabled="subscribingNotification"
+          @click="subscribeForMeal(true)"
+        >{{ notificationAccepted ? '✓ 本餐会微信通知' : '🔔 菜单定了通知我' }}</button>
       </view>
     </view>
 
@@ -212,7 +317,7 @@ onShareAppMessage(() => ({
         <image class="dish-card__image" :src="dishImageFor(item.recipe)" mode="aspectFill" />
         <view class="dish-card__copy">
           <text class="dish-card__name">{{ item.recipe.name }}</text>
-          <text class="dish-card__tag">{{ item.wishCount }} 人想吃</text>
+          <text class="dish-card__tag">{{ wishLabel(item) }}</text>
         </view>
         <view class="stepper">
           <button
@@ -245,9 +350,9 @@ onShareAppMessage(() => ({
 
     <view v-else class="state-card state-card--empty">
       <image class="state-card__mascot" src="/static/images/home/meal-mascot.png" mode="aspectFit" />
-      <text class="state-card__title">今晚还没点菜</text>
-      <text class="state-card__copy">先去挑几道大家都想吃的菜吧</text>
-      <button class="state-card__primary" @click="continueSelecting">去选菜</button>
+      <text class="state-card__title">{{ loggedIn ? '这顿饭还没点菜' : '登录后查看菜单' }}</text>
+      <text class="state-card__copy">{{ loggedIn ? '先去挑几道自己或大家想吃的菜吧' : '返回选择菜品页，用微信登录后就能开始点菜' }}</text>
+      <button class="state-card__primary" @click="continueSelecting">{{ loggedIn ? '去选菜' : '返回登录' }}</button>
     </view>
 
     <view v-if="selectedDishes.length" class="menu-footer">
@@ -325,29 +430,29 @@ onShareAppMessage(() => ({
 
 .party-card {
   display: flex;
-  min-height: 196rpx;
-  margin-top: 20rpx;
-  padding: 22rpx 22rpx 22rpx 18rpx;
+  min-height: 210rpx;
+  margin-top: 26rpx;
+  padding: 24rpx 22rpx 24rpx 16rpx;
   align-items: center;
   border: 3rpx solid rgba(255, 255, 255, 0.95);
   border-radius: 32rpx;
-  background: linear-gradient(112deg, rgba(255, 250, 242, 0.98), rgba(255, 255, 255, 0.94));
-  box-shadow: 0 12rpx 34rpx rgba(100, 60, 27, 0.055);
+  background: linear-gradient(112deg, #fffaf3, rgba(255, 255, 255, 0.98));
+  box-shadow: 0 12rpx 34rpx rgba(100, 60, 27, 0.07);
   box-sizing: border-box;
 }
 
 .party-card__mascot-wrap {
   display: flex;
-  width: 176rpx;
-  height: 152rpx;
-  flex: 0 0 176rpx;
+  width: 184rpx;
+  height: 166rpx;
+  flex: 0 0 184rpx;
   align-items: center;
   justify-content: center;
 }
 
 .party-card__mascot {
-  width: 176rpx;
-  height: 162rpx;
+  width: 184rpx;
+  height: 174rpx;
 }
 
 .party-card__content {
@@ -360,7 +465,7 @@ onShareAppMessage(() => ({
   display: block;
   overflow: hidden;
   color: #3d2113;
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 800;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -369,25 +474,35 @@ onShareAppMessage(() => ({
 
 .party-card__people {
   display: flex;
-  margin-top: 12rpx;
+  min-width: 0;
+  margin-top: 14rpx;
   align-items: center;
 }
 
-.avatar-list {
-  display: flex;
+.avatar-scroll {
+  width: 0;
+  height: 60rpx;
   min-width: 0;
   flex: 1;
+  white-space: nowrap;
+}
+
+.avatar-list {
+  display: inline-flex;
+  height: 60rpx;
+  padding-right: 10rpx;
   align-items: center;
-  flex-wrap: wrap;
-  row-gap: 8rpx;
+  vertical-align: top;
+  box-sizing: border-box;
 }
 
 .avatar {
   display: flex;
-  width: 56rpx;
-  height: 56rpx;
-  margin-left: -9rpx;
+  width: 60rpx;
+  height: 60rpx;
+  margin-left: -8rpx;
   overflow: hidden;
+  flex: 0 0 60rpx;
   align-items: center;
   justify-content: center;
   border: 4rpx solid #fff;
@@ -408,13 +523,14 @@ onShareAppMessage(() => ({
   display: flex;
   min-width: 106rpx;
   height: 64rpx;
-  margin-left: 14rpx;
+  margin-left: 12rpx;
   padding: 0 24rpx;
   align-items: center;
   justify-content: center;
   color: $color-primary-deep;
   border: 2rpx solid $color-primary;
   border-radius: 31rpx;
+  background: #fffaf3;
   font-size: 25rpx;
   font-weight: 700;
 }
@@ -430,15 +546,32 @@ onShareAppMessage(() => ({
   white-space: nowrap;
 }
 
+.party-card__notice {
+  display: inline-flex;
+  min-height: 52rpx;
+  margin-top: 10rpx;
+  padding: 0 16rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 26rpx;
+  background: #fff3e3;
+  color: $color-primary-deep;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.party-card__notice--active { background: #edf8e6; color: #57943b; }
+
 .balance-card {
   display: flex;
-  min-height: 94rpx;
+  min-height: 98rpx;
   margin-top: 18rpx;
   padding: 15rpx 18rpx;
   align-items: center;
   border-radius: 28rpx;
   background: #fff;
-  box-shadow: $shadow-card;
+  border: 1rpx solid rgba(99, 66, 41, 0.03);
+  box-shadow: 0 9rpx 28rpx rgba(83, 49, 24, 0.055);
   box-sizing: border-box;
 }
 
@@ -533,21 +666,21 @@ onShareAppMessage(() => ({
 .dish-card {
   display: flex;
   width: 100%;
-  min-height: 130rpx;
-  margin-top: 13rpx;
-  padding: 11rpx 14rpx 11rpx 11rpx;
+  min-height: 140rpx;
+  margin-top: 14rpx;
+  padding: 11rpx 12rpx 11rpx 11rpx;
   align-items: center;
   border: 1rpx solid rgba(99, 66, 41, 0.025);
   border-radius: 27rpx;
   background: #fff;
-  box-shadow: 0 7rpx 24rpx rgba(86, 50, 24, 0.04);
+  box-shadow: 0 8rpx 26rpx rgba(86, 50, 24, 0.055);
   box-sizing: border-box;
 }
 
 .dish-card__image {
-  width: 174rpx;
-  height: 108rpx;
-  flex: 0 0 174rpx;
+  width: 180rpx;
+  height: 118rpx;
+  flex: 0 0 180rpx;
   border-radius: 20rpx;
   background: #f3e9df;
 }
@@ -565,7 +698,7 @@ onShareAppMessage(() => ({
   max-width: 100%;
   overflow: hidden;
   color: #352015;
-  font-size: 28rpx;
+  font-size: 29rpx;
   font-weight: 800;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -631,7 +764,7 @@ onShareAppMessage(() => ({
 .add-more-card {
   display: flex;
   width: 100%;
-  height: 94rpx;
+  height: 98rpx;
   margin-top: 20rpx;
   align-items: center;
   justify-content: center;
@@ -708,7 +841,7 @@ onShareAppMessage(() => ({
   right: 0;
   bottom: 0;
   left: 0;
-  padding: 18rpx 30rpx calc(env(safe-area-inset-bottom) + 20rpx);
+  padding: 20rpx 30rpx calc(env(safe-area-inset-bottom) + 20rpx);
   border-top: 1rpx solid rgba(118, 75, 43, 0.06);
   background: rgba(255, 250, 244, 0.97);
   box-shadow: 0 -10rpx 34rpx rgba(76, 45, 23, 0.07);
@@ -722,12 +855,12 @@ onShareAppMessage(() => ({
 }
 
 .footer-button {
-  height: 88rpx;
+  height: 92rpx;
   flex: 1;
   border-radius: 44rpx;
   font-size: 29rpx;
   font-weight: 800;
-  line-height: 84rpx;
+  line-height: 88rpx;
 }
 
 .footer-button--secondary {
@@ -745,11 +878,12 @@ onShareAppMessage(() => ({
 @keyframes shimmer { to { background-position: -200% 0; } }
 
 @media (max-width: 360px) {
-  .party-card__mascot-wrap { width: 146rpx; flex-basis: 146rpx; }
-  .party-card__mascot { width: 154rpx; }
+  .party-card { padding-right: 16rpx; }
+  .party-card__mascot-wrap { width: 142rpx; flex-basis: 142rpx; }
+  .party-card__mascot { width: 150rpx; }
   .balance-stat { padding: 0 9rpx; }
   .balance-card__result { padding: 0 10rpx; }
-  .dish-card__image { width: 152rpx; flex-basis: 152rpx; }
+  .dish-card__image { width: 148rpx; flex-basis: 148rpx; }
   .dish-card__copy { padding-right: 7rpx; padding-left: 12rpx; }
 }
 

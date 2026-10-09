@@ -24,6 +24,7 @@
   },
   "mp-weixin": {
     "appid": "wx7fce988b19eee10d",
+    "__usePrivacyCheck__": true,
     "setting": { "urlCheck": true },
     "usingComponents": true
   },

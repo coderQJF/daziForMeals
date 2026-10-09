@@ -2,6 +2,7 @@ import type { RecipeDetail } from './recipe'
 
 export type MealStatus = 'active' | 'confirmed' | 'closed'
 export type MealMemberRole = 'owner' | 'member'
+export type MealType = 'lunch' | 'dinner'
 
 export interface MealMember {
   userId: string
@@ -31,7 +32,7 @@ export interface Meal {
   ownerId: string
   title: string
   mealAt: string
-  mealType: 'dinner'
+  mealType: MealType
   status: MealStatus
   inviteCode: string
   inviteExpiresAt: string

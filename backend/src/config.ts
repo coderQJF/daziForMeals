@@ -20,6 +20,10 @@ function parseCorsOrigins(value: string | undefined): true | string[] {
     .filter(Boolean)
 }
 
+function parseMiniProgramState(value: string | undefined): 'developer' | 'trial' | 'formal' {
+  return value === 'developer' || value === 'trial' ? value : 'formal'
+}
+
 export const serverConfig = {
   host: process.env.HOST?.trim() || '0.0.0.0',
   port: parsePort(process.env.PORT),
@@ -31,6 +35,12 @@ export const serverConfig = {
   publicApiBaseUrl: process.env.PUBLIC_API_BASE_URL?.trim() || 'http://127.0.0.1:3000',
   wechatAppId: process.env.WECHAT_APP_ID?.trim(),
   wechatAppSecret: process.env.WECHAT_APP_SECRET?.trim(),
+  wechatMealNotificationTemplateId: process.env.WECHAT_MEAL_NOTIFICATION_TEMPLATE_ID?.trim(),
+  wechatMealNotificationTitleKey: process.env.WECHAT_MEAL_NOTIFICATION_TITLE_KEY?.trim(),
+  wechatMealNotificationTimeKey: process.env.WECHAT_MEAL_NOTIFICATION_TIME_KEY?.trim(),
+  wechatMealNotificationMenuKey: process.env.WECHAT_MEAL_NOTIFICATION_MENU_KEY?.trim(),
+  wechatMealNotificationStatusKey: process.env.WECHAT_MEAL_NOTIFICATION_STATUS_KEY?.trim(),
+  wechatMiniProgramState: parseMiniProgramState(process.env.WECHAT_MINIPROGRAM_STATE?.trim()),
   sessionSecret: process.env.SESSION_SECRET?.trim(),
   opsAdminToken: process.env.OPS_ADMIN_TOKEN?.trim(),
 }

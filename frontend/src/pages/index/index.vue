@@ -21,13 +21,30 @@ const activeCategory = ref('')
 const rotation = ref(0)
 const bootstrapped = ref(false)
 const avatarErrors = ref<string[]>([])
+const mealClock = ref(Date.now())
 const mealConfirmed = computed(() => meal.value?.status === 'confirmed')
+
+function targetMealCopy(now = new Date()) {
+  const chinaNow = new Date(now.getTime() + 8 * 60 * 60 * 1000)
+  const hour = chinaNow.getUTCHours()
+  const mealType = hour < 12 || hour >= 19 ? 'lunch' : 'dinner'
+  if (hour >= 19) chinaNow.setUTCDate(chinaNow.getUTCDate() + 1)
+  const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][chinaNow.getUTCDay()]
+  const period = mealType === 'lunch' ? '午餐' : '晚餐'
+  return { title: `${weekday}${period}`, period }
+}
+
+const activeMealCopy = computed(() => {
+  const target = targetMealCopy(new Date(mealClock.value))
+  const period = meal.value?.mealType === 'lunch' ? '午餐' : meal.value?.mealType === 'dinner' ? '晚餐' : target.period
+  return { title: meal.value?.title || target.title, period }
+})
 
 const mealContext = computed(() => {
   if (meal.value) return `${meal.value.title} · ${memberCount.value} 人`
   if (mealLoading.value) return '正在读取饭局…'
-  if (loggedIn.value && !profileReady.value) return '完善资料后发起晚餐'
-  return loggedIn.value ? '正在发起晚餐…' : '登录后发起晚餐'
+  if (loggedIn.value && mealError.value) return `${activeMealCopy.value.title} · 创建失败，点此重试`
+  return loggedIn.value ? `正在发起${activeMealCopy.value.title}…` : `登录后发起${activeMealCopy.value.period}`
 })
 
 const matchingRecipes = computed(() => {
@@ -56,11 +73,9 @@ function normalizeCategory() {
 }
 
 async function loadMealSession(force = false) {
+  mealClock.value = Date.now()
   mealStore.refreshAuth()
-  if (loggedIn.value) {
-    await recipeStore.loadUserState(force)
-    if (!profileReady.value) return
-  }
+  if (loggedIn.value) await recipeStore.loadUserState(force)
   await mealStore.loadMeal(force)
 }
 
@@ -80,28 +95,37 @@ function loginUrl() {
 
 function openLogin() { uni.navigateTo({ url: loginUrl() }) }
 
-function requireEditableMeal() {
-  if (!loggedIn.value) { openLogin(); return false }
-  if (!profileReady.value) { openLogin(); return false }
-  if (mealConfirmed.value) {
-    uni.showToast({ title: '本餐菜单已经确定', icon: 'none' })
-    return false
-  }
-  if (!canEdit.value) {
-    uni.showToast({ title: mealLoading.value ? '饭局正在加载' : '请通过有效邀请加入饭局', icon: 'none' })
-    return false
-  }
-  return true
+async function retryMeal() {
+  if (loggedIn.value && !meal.value && !mealLoading.value) await mealStore.loadMeal(true)
 }
 
-function addRecipe(id: number) { if (requireEditableMeal()) void mealStore.addRecipe(id) }
-function incrementRecipe(id: number) { if (requireEditableMeal()) void mealStore.incrementRecipe(id) }
-function decrementRecipe(id: number) { if (requireEditableMeal()) void mealStore.decrementRecipe(id) }
-function toggleWish(id: number) { if (requireEditableMeal()) void mealStore.toggleWish(id) }
-
-function openMenu() {
+async function withEditableMeal(action: () => Promise<boolean>) {
   if (!loggedIn.value) { openLogin(); return }
-  if (!profileReady.value) { openLogin(); return }
+  if (!meal.value) await mealStore.loadMeal(true)
+  if (!meal.value) {
+    uni.showToast({ title: mealLoading.value ? '当前餐次正在创建，请稍候' : mealError.value || '当前餐次创建失败，请重试', icon: 'none' })
+    return
+  }
+  if (mealConfirmed.value) {
+    uni.showToast({ title: '本餐菜单已经确定', icon: 'none' })
+    return
+  }
+  if (!canEdit.value) {
+    uni.showToast({ title: mealError.value || (mealLoading.value ? '饭局正在加载' : '当前餐次暂不可编辑'), icon: 'none' })
+    return
+  }
+  await action()
+}
+
+function addRecipe(id: number) { void withEditableMeal(() => mealStore.addRecipe(id)) }
+function incrementRecipe(id: number) { void withEditableMeal(() => mealStore.incrementRecipe(id)) }
+function decrementRecipe(id: number) { void withEditableMeal(() => mealStore.decrementRecipe(id)) }
+function toggleWish(id: number) { void withEditableMeal(() => mealStore.toggleWish(id)) }
+
+async function openMenu() {
+  if (!loggedIn.value) { openLogin(); return }
+  if (!meal.value) await mealStore.loadMeal(true)
+  if (!meal.value) { uni.showToast({ title: mealError.value || '当前餐次创建失败，请重试', icon: 'none' }); return }
   if (!dishCount.value) { uni.showToast({ title: '先选一道想吃的菜吧', icon: 'none' }); return }
   uni.navigateTo({ url: mealConfirmed.value ? '/pages/menu/confirmed' : '/pages/menu/menu' })
 }
@@ -124,7 +148,7 @@ onShow(() => {
 })
 onPullDownRefresh(async () => { await loadPage(true); uni.stopPullDownRefresh() })
 onShareAppMessage(() => ({
-  title: meal.value ? `${meal.value.title}，来一起点菜` : '来饭搭子一起点今晚的菜',
+  title: `${activeMealCopy.value.title}，来一起点菜`,
   path: mealSharePath('/pages/index/index', meal.value?.id, meal.value?.inviteCode),
 }))
 </script>
@@ -135,7 +159,7 @@ onShareAppMessage(() => ({
     <AppHeader title="选择菜品" :centered="true" :page-padding="24" />
 
     <view class="meal-bar">
-      <text class="meal-bar__title">{{ mealContext }}</text>
+      <text class="meal-bar__title" @click="retryMeal">{{ mealContext }}</text>
       <button v-if="!loggedIn" class="login-entry" @click="openLogin">未登录</button>
       <button v-else-if="!profileReady" class="login-entry" @click="openLogin">完善资料</button>
       <scroll-view v-else class="people-scroll" scroll-x :show-scrollbar="false">
@@ -150,12 +174,12 @@ onShareAppMessage(() => ({
     </view>
 
     <button v-if="meal && !meal.isMember" class="invite-notice" @click="openLogin">
-      <text class="invite-notice__title">你收到一份晚餐邀请</text>
+      <text class="invite-notice__title">你收到一份{{ activeMealCopy.period }}邀请</text>
       <text class="invite-notice__copy">微信登录后加入，当前已有 {{ memberCount }} 位饭搭子</text>
     </button>
 
     <view class="hero">
-      <view class="hero__copy"><text class="hero__title">今晚想吃点什么？</text><text class="hero__subtitle">喜欢的先加进来，大家一起慢慢选</text></view>
+      <view class="hero__copy"><text class="hero__title">{{ activeMealCopy.period }}想吃点什么？</text><text class="hero__subtitle">喜欢的先加进来，大家一起慢慢选</text></view>
       <image class="hero__mascot" src="/static/images/home/meal-mascot.png" mode="aspectFit" />
     </view>
 
@@ -197,8 +221,8 @@ onShareAppMessage(() => ({
     <view v-else class="empty"><image src="/static/images/home/meal-mascot.png" mode="aspectFit" /><text class="empty__title">{{ pageError ? '菜单暂时没端上来' : '没找到这道菜' }}</text><text class="empty__copy">{{ pageError || '换个菜名或分类再看看吧' }}</text><button @click="pageError ? loadPage(true) : (keyword = '')">{{ pageError ? '重新加载' : '清空搜索' }}</button></view>
 
     <view class="dock">
-      <view class="dock__summary"><template v-if="loggedIn && profileReady"><text>{{ mealConfirmed ? '菜单已定' : '已选' }} <text class="dock__number">{{ dishCount }}</text> 道</text><text class="dock__dot">·</text><text><text class="dock__number">{{ memberCount }}</text> 人参与</text></template><text v-else>{{ loggedIn ? '先完善真实头像和昵称' : '微信登录后一起点菜' }}</text></view>
-      <button class="dock__button" @click="openMenu">{{ loggedIn && profileReady ? (mealConfirmed ? '查看已定菜单' : '查看菜单') : loggedIn ? '完善资料' : '微信登录' }}</button>
+      <view class="dock__summary"><template v-if="loggedIn"><text>{{ mealConfirmed ? '菜单已定' : '已选' }} <text class="dock__number">{{ dishCount }}</text> 道</text><text class="dock__dot">·</text><text><text class="dock__number">{{ memberCount }}</text> 人参与</text></template><text v-else>微信登录后一起点菜</text></view>
+      <button class="dock__button" @click="openMenu">{{ loggedIn ? (mealConfirmed ? '查看已定菜单' : '查看菜单') : '微信登录' }}</button>
     </view>
   </view>
 </template>

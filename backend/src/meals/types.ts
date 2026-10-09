@@ -1,6 +1,6 @@
 import type { Recipe, RecipeRepository } from '../recipes/types.js'
 
-export type MealType = 'dinner'
+export type MealType = 'lunch' | 'dinner'
 export type MealStatus = 'active' | 'confirmed' | 'closed'
 export type MealMemberRole = 'owner' | 'member'
 

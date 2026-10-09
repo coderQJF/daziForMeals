@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { mealApi } from '@/services/meals'
-import { hasAuthToken } from '@/services/http'
+import { ApiError, hasAuthToken } from '@/services/http'
 import { recipeApi } from '@/services/recipes'
 import type { Meal, MealInvitation } from '@/types/meal'
 import type { RecipeDetail } from '@/types/recipe'
@@ -26,6 +26,8 @@ export const useMealStore = defineStore('meal', () => {
   const mealError = ref('')
   const catalogError = ref('')
   const pendingRecipeId = ref<number | null>(null)
+  let mealLoadRequestId = 0
+  let loadingMealId: string | null = null
 
   const members = computed(() => meal.value?.members ?? [])
   const selectedDishes = computed(() => meal.value?.dishes ?? [])
@@ -72,21 +74,31 @@ export const useMealStore = defineStore('meal', () => {
     }
   }
 
-  async function loadMeal(force = false) {
+  async function loadMeal(_force = false) {
     refreshAuth()
-    if (mealLoading.value || (!force && meal.value?.isMember && !invitation.value)) return meal.value
+    if (mealLoading.value) return meal.value
+    const requestId = ++mealLoadRequestId
+    loadingMealId = null
     mealLoading.value = true
     mealError.value = ''
     try {
       if (invitation.value) {
-        const preview = await mealApi.get(invitation.value.mealId, invitation.value.inviteCode)
-        if (loggedIn.value && !preview.isMember) {
-          meal.value = await mealApi.join(invitation.value.mealId, invitation.value.inviteCode)
-        } else {
-          meal.value = preview
+        try {
+          let nextMeal = await mealApi.get(invitation.value.mealId, invitation.value.inviteCode)
+          if (loggedIn.value && !nextMeal.isMember) {
+            nextMeal = await mealApi.join(invitation.value.mealId, invitation.value.inviteCode)
+          }
+          if (requestId !== mealLoadRequestId) return meal.value
+          meal.value = nextMeal
+          if (nextMeal.isMember) setInvitation(null)
+          return nextMeal
+        } catch (error) {
+          if (requestId !== mealLoadRequestId) return meal.value
+          const invalidInvitation = error instanceof ApiError
+            && (error.statusCode === 403 || error.statusCode === 404)
+          if (invalidInvitation) setInvitation(null)
+          if (!loggedIn.value || !invalidInvitation) throw error
         }
-        if (meal.value.isMember) setInvitation(null)
-        return meal.value
       }
 
       if (!loggedIn.value) {
@@ -94,16 +106,60 @@ export const useMealStore = defineStore('meal', () => {
         return null
       }
 
-      meal.value = await mealApi.getCurrent()
-      if (!meal.value) meal.value = await mealApi.create()
-      return meal.value
+      const currentMeal = await mealApi.getCurrent()
+      if (requestId !== mealLoadRequestId) return meal.value
+      const nextMeal = currentMeal ?? await mealApi.create()
+      if (requestId !== mealLoadRequestId) return meal.value
+      meal.value = nextMeal
+      return nextMeal
     } catch (error) {
-      if (invitation.value) setInvitation(null)
+      if (requestId !== mealLoadRequestId) return meal.value
       refreshAuth()
+      meal.value = null
       mealError.value = error instanceof Error ? error.message : '饭局加载失败'
       return null
     } finally {
-      mealLoading.value = false
+      if (requestId === mealLoadRequestId) {
+        mealLoading.value = false
+        loadingMealId = null
+      }
+    }
+  }
+
+  async function loadMealById(mealId: string, force = false) {
+    refreshAuth()
+    const normalizedMealId = mealId.trim()
+    if (!normalizedMealId) {
+      meal.value = null
+      mealError.value = '饭局编号无效'
+      return null
+    }
+    if (!force && meal.value?.id === normalizedMealId && meal.value.isMember) return meal.value
+    if (mealLoading.value && loadingMealId === normalizedMealId) return meal.value
+
+    const requestId = ++mealLoadRequestId
+    loadingMealId = normalizedMealId
+    mealLoading.value = true
+    mealError.value = ''
+    if (meal.value?.id !== normalizedMealId) meal.value = null
+    try {
+      if (!loggedIn.value) throw new Error('登录后才能查看这个饭局')
+      const nextMeal = await mealApi.get(normalizedMealId)
+      if (requestId !== mealLoadRequestId) return meal.value
+      if (!nextMeal.isMember) throw new Error('你暂无权限访问这个饭局')
+      meal.value = nextMeal
+      return nextMeal
+    } catch (error) {
+      if (requestId !== mealLoadRequestId) return meal.value
+      refreshAuth()
+      meal.value = null
+      mealError.value = error instanceof Error ? error.message : '饭局加载失败'
+      return null
+    } finally {
+      if (requestId === mealLoadRequestId) {
+        mealLoading.value = false
+        loadingMealId = null
+      }
     }
   }
 
@@ -240,6 +296,7 @@ export const useMealStore = defineStore('meal', () => {
     useInvitationOptions,
     loadCatalog,
     loadMeal,
+    loadMealById,
     dishFor,
     quantityFor,
     hasWished,

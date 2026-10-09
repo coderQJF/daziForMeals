@@ -1,5 +1,5 @@
 import { apiGet, apiRequest } from './http'
-import type { Meal, MealCategory } from '@/types/meal'
+import type { Meal, MealCategory, MealType } from '@/types/meal'
 
 export const mealApi = {
   getCategories() {
@@ -8,7 +8,7 @@ export const mealApi = {
   getCurrent() {
     return apiGet<Meal | null>('/meals/current')
   },
-  create(input?: { title?: string; mealAt?: string; mealType?: 'dinner' }) {
+  create(input?: { title?: string; mealAt?: string; mealType?: MealType }) {
     return apiRequest<Meal>('POST', '/meals', input)
   },
   get(mealId: string, inviteCode?: string) {

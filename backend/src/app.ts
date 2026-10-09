@@ -5,16 +5,20 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import Fastify, { LogController, type FastifyInstance } from 'fastify'
 import { createSessionToken, createWechatCodeExchange, createWechatSubject, verifySessionToken, WechatLoginError, type WechatCodeExchange } from './auth/wechat.js'
+import { createWechatPlatformClient, WechatPlatformError, type WechatPlatformClient } from './auth/wechat-platform.js'
 import { serverConfig } from './config.js'
 import { createMemoryMealRepository } from './meals/repository.js'
+import { mealTitle, resolveMealSlot } from './meals/schedule.js'
 import {
   InvalidInviteError,
   MealAccessDeniedError,
   MealNotFoundError,
   MealValidationError,
   type MealCategoryInput,
+  type MealAggregate,
   type MealCreateInput,
   type MealRepository,
+  type MealType,
 } from './meals/types.js'
 import { createMemoryRecipeRepository } from './recipes/repository.js'
 import type { RecipeQuery, RecipeRepository, UserDashboard, UserState, UserStateUpdate } from './recipes/types.js'
@@ -25,9 +29,20 @@ export interface BuildAppOptions {
   mealRepository?: MealRepository
   sessionSecret?: string
   wechatCodeExchange?: WechatCodeExchange
+  wechatPlatformClient?: WechatPlatformClient
+  mealNotificationConfig?: MealNotificationConfig | null
   avatarStorageDir?: string
   publicApiBaseUrl?: string
   opsAdminToken?: string
+}
+
+export interface MealNotificationConfig {
+  templateId: string
+  titleKey: string
+  timeKey: string
+  menuKey?: string
+  statusKey?: string
+  miniProgramState: 'developer' | 'trial' | 'formal'
 }
 
 class InvalidSessionError extends Error {}
@@ -79,9 +94,14 @@ function detectAvatarType(buffer: Uint8Array<ArrayBuffer>): { extension: 'jpg' |
 }
 
 function toDashboard(state: UserState): UserDashboard {
-  const { clientId: _clientId, ...publicState } = state
+  const { clientId: _clientId, wechat, ...publicState } = state
+  const phoneNumber = wechat?.phone?.purePhoneNumber ?? ''
   return {
     ...publicState,
+    phoneBound: Boolean(phoneNumber),
+    phoneMasked: phoneNumber
+      ? `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-4)}`
+      : '',
     stats: {
       favorites: state.favoriteRecipeIds.length,
       likes: state.likedRecipeIds.length,
@@ -127,43 +147,26 @@ function parseUserStateUpdate(body: unknown): UserStateUpdate {
   return update
 }
 
-function nextDinnerAt(now = new Date()): Date {
-  const chinaNow = new Date(now.getTime() + 8 * 60 * 60 * 1000)
-  const dinner = new Date(Date.UTC(
-    chinaNow.getUTCFullYear(),
-    chinaNow.getUTCMonth(),
-    chinaNow.getUTCDate(),
-    10,
-    30,
-  ))
-  if (dinner.getTime() <= now.getTime()) dinner.setUTCDate(dinner.getUTCDate() + 1)
-  return dinner
-}
-
-function dinnerTitle(mealAt: Date): string {
-  const weekday = new Intl.DateTimeFormat('zh-CN', {
-    weekday: 'short',
-    timeZone: 'Asia/Shanghai',
-  }).format(mealAt)
-  return `${weekday}晚餐`
-}
-
 function parseMealCreateInput(body: unknown): MealCreateInput {
   const payload = body && typeof body === 'object' && !Array.isArray(body)
     ? body as Record<string, unknown>
     : {}
-  const defaultMealAt = nextDinnerAt()
-  const mealAt = payload.mealAt === undefined ? defaultMealAt : new Date(String(payload.mealAt))
+  const defaultSlot = resolveMealSlot()
+  const mealAt = payload.mealAt === undefined ? defaultSlot.mealAt : new Date(String(payload.mealAt))
   if (Number.isNaN(mealAt.getTime())) throw new MealValidationError('用餐时间格式无效')
-  if (payload.mealType !== undefined && payload.mealType !== 'dinner') {
-    throw new MealValidationError('当前仅支持晚餐')
+  const requestedMealType = payload.mealType
+  if (requestedMealType !== undefined && requestedMealType !== 'lunch' && requestedMealType !== 'dinner') {
+    throw new MealValidationError('餐次类型仅支持午餐或晚餐')
   }
+  const chinaHour = new Date(mealAt.getTime() + 8 * 60 * 60 * 1000).getUTCHours()
+  const inferredMealType: MealType = chinaHour < 16 ? 'lunch' : 'dinner'
+  const mealType: MealType = requestedMealType ?? (payload.mealAt === undefined ? defaultSlot.mealType : inferredMealType)
   const requestedTitle = typeof payload.title === 'string' ? payload.title.trim() : ''
   if (requestedTitle.length > 40) throw new MealValidationError('饭局名称不能超过 40 个字')
   return {
-    title: requestedTitle || dinnerTitle(mealAt),
+    title: requestedTitle || mealTitle(mealAt, mealType),
     mealAt: mealAt.toISOString(),
-    mealType: 'dinner',
+    mealType,
   }
 }
 
@@ -205,6 +208,26 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       ? createWechatCodeExchange(serverConfig.wechatAppId, serverConfig.wechatAppSecret)
       : undefined
   )
+  const wechatPlatformClient = options.wechatPlatformClient ?? (
+    serverConfig.wechatAppId && serverConfig.wechatAppSecret
+      ? createWechatPlatformClient(serverConfig.wechatAppId, serverConfig.wechatAppSecret)
+      : undefined
+  )
+  const configuredMealNotification = (
+    serverConfig.wechatMealNotificationTemplateId
+    && serverConfig.wechatMealNotificationTitleKey
+    && serverConfig.wechatMealNotificationTimeKey
+  ) ? {
+      templateId: serverConfig.wechatMealNotificationTemplateId,
+      titleKey: serverConfig.wechatMealNotificationTitleKey,
+      timeKey: serverConfig.wechatMealNotificationTimeKey,
+      ...(serverConfig.wechatMealNotificationMenuKey ? { menuKey: serverConfig.wechatMealNotificationMenuKey } : {}),
+      ...(serverConfig.wechatMealNotificationStatusKey ? { statusKey: serverConfig.wechatMealNotificationStatusKey } : {}),
+      miniProgramState: serverConfig.wechatMiniProgramState,
+    } satisfies MealNotificationConfig : null
+  const mealNotificationConfig = options.mealNotificationConfig === undefined
+    ? configuredMealNotification
+    : options.mealNotificationConfig
   const avatarStorageDir = options.avatarStorageDir ?? serverConfig.avatarStorageDir
   const publicApiBaseUrl = (options.publicApiBaseUrl ?? serverConfig.publicApiBaseUrl).replace(/\/+$/, '')
   const operationsToken = (options.opsAdminToken ?? serverConfig.opsAdminToken ?? '').trim()
@@ -218,6 +241,52 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       ),
     }),
   })
+
+  async function notifyMealConfirmed(meal: MealAggregate): Promise<void> {
+    if (!wechatPlatformClient || !mealNotificationConfig) return
+    const recipients = await repository.getNotificationRecipients(
+      meal.members.map(member => member.userId),
+      meal.id,
+      mealNotificationConfig.templateId,
+    )
+    if (!recipients.length) return
+
+    const mealAt = new Date(meal.mealAt)
+    const chinaTime = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(mealAt).replace(/\//g, '-').replace(/\s+/g, ' ')
+    const menu = meal.dishes.map(item => item.recipe.name).join('、').slice(0, 20) || '菜单已确定'
+    const data: Record<string, { value: string }> = {
+      [mealNotificationConfig.titleKey]: { value: meal.title.slice(0, 20) },
+      [mealNotificationConfig.timeKey]: { value: chinaTime },
+    }
+    if (mealNotificationConfig.menuKey) data[mealNotificationConfig.menuKey] = { value: menu }
+    if (mealNotificationConfig.statusKey) data[mealNotificationConfig.statusKey] = { value: '菜单已定' }
+
+    await Promise.all(recipients.map(async (recipient) => {
+      try {
+        await wechatPlatformClient.sendSubscribeMessage({
+          openid: recipient.openid,
+          templateId: mealNotificationConfig.templateId,
+          page: `pages/menu/confirmed?mealId=${encodeURIComponent(meal.id)}`,
+          data,
+          miniProgramState: mealNotificationConfig.miniProgramState,
+        })
+        await repository.setNotificationSubscription(recipient.clientId, meal.id, mealNotificationConfig.templateId, false)
+      } catch (error) {
+        if (error instanceof WechatPlatformError && error.code === '43101') {
+          await repository.setNotificationSubscription(recipient.clientId, meal.id, mealNotificationConfig.templateId, false)
+        }
+        app.log.warn({ err: error, clientId: recipient.clientId }, 'meal confirmation notification failed')
+      }
+    }))
+  }
 
   async function persistAvatar(clientId: string, buffer: Uint8Array<ArrayBuffer>, extension: 'jpg' | 'png') {
     const filename = `${createHash('sha256').update(buffer).digest('hex')}.${extension}`
@@ -280,6 +349,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get('/api/v1', async () => ({
     name: '饭搭子 API',
     version: 'v1',
+  }))
+
+  app.get('/api/v1/wechat/capabilities', async () => ({
+    data: {
+      phoneNumberBinding: Boolean(wechatPlatformClient),
+      mealNotification: mealNotificationConfig
+        ? { templateId: mealNotificationConfig.templateId }
+        : null,
+    },
   }))
 
   function operationsError(authorization: string | undefined): { status: 401 | 503, message: string } | undefined {
@@ -359,7 +437,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     try {
       const identity = await wechatCodeExchange(code)
       const userClientId = createWechatSubject(identity.openid)
-      const state = await repository.claimUserState(resolveDeviceClientId(request.headers), userClientId)
+      await repository.claimUserState(resolveDeviceClientId(request.headers), userClientId)
+      const state = await repository.setWechatIdentity(userClientId, identity)
       const session = createSessionToken(userClientId, sessionSecret)
       return {
         data: {
@@ -374,6 +453,57 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       request.log.error(error)
       return reply.code(502).send({ error: { code: 'WECHAT_SERVICE_UNAVAILABLE', message: '微信登录服务暂时不可用' } })
     }
+  })
+
+  app.post('/api/v1/me/wechat-phone', async (request, reply) => {
+    const clientId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    if (!wechatPlatformClient) {
+      return reply.code(503).send({ error: { code: 'WECHAT_PHONE_NOT_CONFIGURED', message: '微信手机号能力尚未配置' } })
+    }
+    const body = request.body as Record<string, unknown> | undefined
+    const code = typeof body?.code === 'string' ? body.code.trim() : ''
+    if (!code || code.length > 256) {
+      return reply.code(400).send({ error: { code: 'INVALID_PHONE_CODE', message: '手机号授权凭证无效' } })
+    }
+    try {
+      const phone = await wechatPlatformClient.getPhoneNumber(code)
+      const state = await repository.setWechatPhone(clientId, phone)
+      return { data: toDashboard(state) }
+    } catch (error) {
+      if (error instanceof WechatPlatformError) {
+        request.log.warn({ code: error.code }, 'wechat phone binding failed')
+        return reply.code(400).send({ error: { code: error.code, message: '手机号授权未完成，请重试' } })
+      }
+      if (error instanceof Error && error.message.startsWith('请重新完成微信登录')) {
+        return reply.code(409).send({ error: { code: 'WECHAT_RELOGIN_REQUIRED', message: error.message } })
+      }
+      throw error
+    }
+  })
+
+  app.post('/api/v1/me/notification-subscriptions', async (request, reply) => {
+    const clientId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    if (!mealNotificationConfig) {
+      return reply.code(503).send({ error: { code: 'MEAL_NOTIFICATION_NOT_CONFIGURED', message: '菜单通知尚未配置' } })
+    }
+    const body = request.body as Record<string, unknown> | undefined
+    const mealId = typeof body?.mealId === 'string' ? body.mealId.trim() : ''
+    const templateId = typeof body?.templateId === 'string' ? body.templateId.trim() : ''
+    const validMealId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(mealId)
+    if (!validMealId || templateId !== mealNotificationConfig.templateId || typeof body?.subscribed !== 'boolean') {
+      return reply.code(400).send({ error: { code: 'INVALID_NOTIFICATION_SUBSCRIPTION', message: '通知授权结果无效' } })
+    }
+    try {
+      const meal = await mealRepository.getMeal(mealId, clientId)
+      if (!meal.isMember) throw new MealAccessDeniedError('加入饭局后才能开启通知')
+      await repository.setNotificationSubscription(clientId, mealId, templateId, body.subscribed)
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('请重新完成微信登录')) {
+        return reply.code(409).send({ error: { code: 'WECHAT_RELOGIN_REQUIRED', message: error.message } })
+      }
+      throw error
+    }
+    return { data: { subscribed: body.subscribed } }
   })
 
   app.get('/api/v1/bootstrap', async (request) => {
@@ -419,7 +549,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.put('/api/v1/meals/:id/confirm', async (request) => {
     const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
     const { id } = request.params as { id: string }
-    return { data: await mealRepository.confirmMeal(id, userId) }
+    const confirmed = await mealRepository.confirmMeal(id, userId)
+    void notifyMealConfirmed(confirmed).catch((error) => {
+      request.log.warn({ err: error, mealId: confirmed.id }, 'meal confirmation notification dispatch failed')
+    })
+    return { data: confirmed }
   })
 
   app.put('/api/v1/meals/:id/wishes/:recipeId', async (request) => {

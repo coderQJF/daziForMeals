@@ -17,6 +17,9 @@ pnpm dev:backend
 - `GET /api/v1/health`
 - `GET /api/v1`
 - `POST /api/v1/auth/wechat`
+- `GET /api/v1/wechat/capabilities`
+- `POST /api/v1/me/wechat-phone`
+- `POST /api/v1/me/notification-subscriptions`
 - `GET /api/v1/meal-categories`
 - `GET /api/v1/operations/recipes?limit=200` (`OPS_ADMIN_TOKEN`)
 - `GET /api/v1/meals/current`
@@ -38,11 +41,13 @@ pnpm dev:backend
 
 饭局创建、加入和所有写操作均要求微信登录会话。邀请链接可以匿名预览饭局，登录后通过邀请码加入；成员人数不设上限。邀请在用餐时间 12 小时后过期，非成员预览响应不返回真实邀请码，生产环境也不记录携带邀请码的 Fastify 自动请求日志。
 
-`GET /api/v1/meals/current` 读取用户最近创建或加入时持久选中的饭局；按中国日期判断，用餐日期已过时返回 `null`，今日或已创建的下一顿饭返回 `active`/`confirmed` 饭局。同一创建者在同一中国日期并发创建只会产生一个 `active` 饭局。确认后不再允许加入、修改菜品或修改“想吃”。菜品数量通过 `{ "delta": 1 }` 或 `{ "delta": -1 }` 在服务端原子更新。
+餐次统一按 `Asia/Shanghai` 计算：12:00 前目标为当天 12:00 午餐，12:00（含）到 19:00 前目标为当天 19:00 晚餐，19:00（含）后目标为次日 12:00 午餐，不创建早餐。`POST /api/v1/meals` 不传参数时会创建这个目标餐次，返回的 `mealType` 为 `lunch` 或 `dinner`，标题默认为“周几午餐/晚餐”。`GET /api/v1/meals/current` 会在当前目标餐次的全部成员饭局中优先返回用户显式选中的饭局，否则优先返回受邀加入的共享饭局；因此提前加入下一餐后不会被当前餐次的单人饭局覆盖。同一创建者在同一中国日期、同一餐次并发创建只会产生一个 `active` 饭局，午餐和晚餐互不冲突。确认后不再允许加入、修改菜品或修改“想吃”。菜品数量通过 `{ "delta": 1 }` 或 `{ "delta": -1 }` 在服务端原子更新。
 
 菜类通过 `GET /api/v1/meal-categories` 实时读取，运营后台使用 `OPS_ADMIN_TOKEN` 调用 `GET|PUT|DELETE /api/v1/operations/meal-categories` 管理菜类及其菜谱关联。`GET /api/v1/operations/recipes?limit=200` 返回 `{ "data": Recipe[], "meta": { "total": number } }`，供后台完整加载关联候选菜谱，`limit` 上限为 500。
 
 未登录客户端通过 `x-client-id` 区分设备。微信登录成功后，客户端改用服务端签名会话；首次登录会将当前设备的真实收藏、喜欢、做过、身体状态、计划菜谱和资料复制到微信账号，之后不会用其他设备数据覆盖账号已有数据。全新微信用户默认昵称为“微信用户”，头像、简介和行为数组均为空；旧版未修改过的演示默认会在登录时清理。状态保存在 PostgreSQL 的 `fandazi_user_state` 表中，微信 `session_key` 不会下发到客户端。
+
+手机号使用微信 `getPhoneNumber` 动态令牌在服务端换取并保存，API 只向小程序返回脱敏号码。该能力需要小程序为已认证的非个人主体，并在微信公众平台的《小程序用户隐私保护指引》中声明手机号等实际收集信息。菜单通知使用一次性订阅消息：小程序将 `mealId`、模板 ID 和授权结果提交到 `POST /api/v1/me/notification-subscriptions`，服务端验证用户为该饭局成员后仅为该餐保存授权。需先在微信公众平台选用模板，再配置 `WECHAT_MEAL_NOTIFICATION_TEMPLATE_ID` 及模板实际的标题、时间、菜单、状态字段 key（菜单和状态可按模板省略）；体验版设置 `WECHAT_MINIPROGRAM_STATE=trial`，正式发布改为 `formal`。每次用户同意仅供本餐发送一次，发送成功后服务端会消费该订阅状态，消息点击会按 `mealId` 打开对应的已定菜单。
 
 未设置 `DATABASE_URL` 时，本地开发和自动化测试使用内存种子数据；Docker 部署会连接内部 PostgreSQL。当前代码维护的菜谱种子会按稳定菜谱 ID 更新，用户行为数据不会被重启覆盖。
 

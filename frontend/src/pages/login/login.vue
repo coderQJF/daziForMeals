@@ -10,26 +10,81 @@ import { useRecipeStore } from '@/stores/recipe'
 
 const recipeStore = useRecipeStore()
 const mealStore = useMealStore()
-const { profile, profileReady } = storeToRefs(recipeStore)
+const { profile, profileReady, phoneBound, phoneMasked } = storeToRefs(recipeStore)
 const loggingIn = ref(false)
 const savingProfile = ref(false)
+const bindingPhone = ref(false)
+const privacySettingReady = ref(false)
+const privacyAuthorizationRequired = ref(false)
 const errorMessage = ref('')
-const profileStep = ref(false)
+const currentStep = ref<'login' | 'phone' | 'profile'>('login')
+const profileStep = computed(() => currentStep.value === 'profile')
 const authenticated = ref(hasAuthToken())
 const nickname = ref('')
 const avatarTempPath = ref('')
 const avatarLoadFailed = ref(false)
 const joiningInvitation = ref(false)
+const invitedMealId = ref('')
 const hasMealInvitation = computed(() => Boolean(mealStore.invitation))
+const capabilities = ref<Awaited<ReturnType<typeof authApi.getCapabilities>>>({
+  phoneNumberBinding: false,
+  mealNotification: null,
+})
+
+const title = computed(() => ({
+  login: '欢迎来到饭搭子',
+  phone: '绑定微信手机号',
+  profile: '让饭搭子认出你',
+}[currentStep.value]))
+
+const subtitle = computed(() => {
+  if (currentStep.value === 'phone') return '由微信验证号码，仅用于账号识别；你也可以暂时跳过'
+  if (currentStep.value === 'profile') return '头像和昵称会显示给同桌的饭搭子'
+  return hasMealInvitation.value ? '微信登录后加入饭局，一起决定这餐吃什么' : '今天吃什么？饭搭子帮你决定'
+})
 
 onLoad(async (options) => {
+  checkPrivacySetting()
   mealStore.useInvitationOptions((options ?? {}) as Record<string, string | undefined>)
   joiningInvitation.value = hasMealInvitation.value
-  if (!authenticated.value) return
-  mealStore.refreshAuth()
-  await recipeStore.loadUserState(true)
-  if (!profileReady.value) openProfileStep()
+  invitedMealId.value = mealStore.invitation?.mealId ?? ''
+  try {
+    capabilities.value = await authApi.getCapabilities()
+  } catch {
+    // 登录本身不应被可选能力配置阻塞。
+  }
 })
+
+function checkPrivacySetting() {
+  // #ifdef MP-WEIXIN
+  const api = uni as unknown as {
+    getPrivacySetting?: (options: {
+      success: (result: { needAuthorization: boolean }) => void
+      fail: (error: UniApp.GeneralCallbackResult) => void
+    }) => void
+  }
+  if (typeof api.getPrivacySetting !== 'function') {
+    privacySettingReady.value = true
+    return
+  }
+  try {
+    api.getPrivacySetting({
+      success(result) {
+        privacyAuthorizationRequired.value = Boolean(result.needAuthorization)
+        privacySettingReady.value = true
+      },
+      fail() {
+        privacySettingReady.value = true
+      },
+    })
+  } catch {
+    privacySettingReady.value = true
+  }
+  // #endif
+  // #ifndef MP-WEIXIN
+  privacySettingReady.value = true
+  // #endif
+}
 
 function goBack() {
   if (getCurrentPages().length > 1) uni.navigateBack()
@@ -57,14 +112,16 @@ async function login() {
   errorMessage.value = ''
   try {
     joiningInvitation.value = hasMealInvitation.value
-    if (!authenticated.value) {
-      const session = await authApi.login(await getWechatCode())
-      recipeStore.applyUserState(session.user)
-      authenticated.value = true
-    }
+    invitedMealId.value = mealStore.invitation?.mealId ?? invitedMealId.value
+    const session = await authApi.login(await getWechatCode())
+    recipeStore.applyUserState(session.user)
+    authenticated.value = true
     mealStore.refreshAuth()
-    if (!profileReady.value) { openProfileStep(); return }
-    await finishLogin()
+    if (capabilities.value.phoneNumberBinding && !phoneBound.value) {
+      currentStep.value = 'phone'
+      return
+    }
+    await continueAfterPhone()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败，请稍后重试'
   } finally {
@@ -73,10 +130,64 @@ async function login() {
 }
 
 function openProfileStep() {
-  profileStep.value = true
+  currentStep.value = 'profile'
   nickname.value = profile.value.nickname === '微信用户' ? '' : profile.value.nickname
   avatarTempPath.value = ''
   avatarLoadFailed.value = false
+}
+
+async function continueAfterPhone() {
+  if (!profileReady.value) {
+    openProfileStep()
+    return
+  }
+  await continueAfterProfile()
+}
+
+async function continueAfterProfile() {
+  await finishLogin()
+}
+
+async function bindPhone(event: any) {
+  if (bindingPhone.value) return
+  const code = event?.detail?.code
+  if (typeof code !== 'string' || !code) {
+    errorMessage.value = '未获得手机号授权，你可以暂时跳过'
+    return
+  }
+  bindingPhone.value = true
+  errorMessage.value = ''
+  try {
+    recipeStore.applyUserState(await authApi.bindPhone(code))
+    uni.showToast({ title: '手机号已绑定', icon: 'success' })
+    await continueAfterPhone()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '手机号绑定失败，请稍后重试'
+  } finally {
+    bindingPhone.value = false
+  }
+}
+
+function openPrivacyContract() {
+  // #ifdef MP-WEIXIN
+  const api = uni as unknown as { openPrivacyContract(options: { fail: (error: UniApp.GeneralCallbackResult) => void }): void }
+  api.openPrivacyContract({
+    fail: () => uni.showToast({ title: '隐私保护指引暂时无法打开', icon: 'none' }),
+  })
+  // #endif
+  // #ifndef MP-WEIXIN
+  uni.showToast({ title: '请在微信小程序中查看隐私保护指引', icon: 'none' })
+  // #endif
+}
+
+function privacyAuthorized(event: any) {
+  const errMsg = event?.detail?.errMsg
+  if (typeof errMsg === 'string' && !errMsg.endsWith(':ok')) {
+    errorMessage.value = '需同意隐私保护指引后才能获取手机号'
+    return
+  }
+  privacyAuthorizationRequired.value = false
+  errorMessage.value = ''
 }
 
 function chooseAvatar(event: any) {
@@ -97,7 +208,7 @@ async function saveProfile() {
     let avatar = profile.value.avatar
     if (avatarTempPath.value) avatar = recipeStore.applyUploadedAvatar(await experienceApi.uploadAvatar(avatarTempPath.value))
     await recipeStore.updateProfile({ nickname: nextNickname, bio: profile.value.bio, avatar })
-    await finishLogin()
+    await continueAfterProfile()
   } catch (error) {
     joiningInvitation.value = Boolean(mealStore.invitation)
     errorMessage.value = error instanceof Error ? error.message : '资料保存失败，请稍后重试'
@@ -108,8 +219,14 @@ async function saveProfile() {
 
 async function finishLogin() {
   const joinedMeal = await mealStore.loadMeal(true)
-  if (joiningInvitation.value && !joinedMeal?.isMember) throw new Error(mealStore.mealError || '邀请加入失败，请重新打开邀请')
-  uni.showToast({ title: joiningInvitation.value ? '已加入饭局' : '登录成功', icon: 'success' })
+  if (!joinedMeal?.isMember) throw new Error(mealStore.mealError || '饭局加载失败，请重试')
+  const joinedInvitation = Boolean(invitedMealId.value && joinedMeal.id === invitedMealId.value)
+  uni.showToast({
+    title: joiningInvitation.value && !joinedInvitation
+      ? '邀请已失效，已进入自己的饭局'
+      : joinedInvitation ? '已加入饭局' : '登录成功',
+    icon: joiningInvitation.value && !joinedInvitation ? 'none' : 'success',
+  })
   setTimeout(() => {
     if (getCurrentPages().length > 1) uni.navigateBack()
     else uni.switchTab({ url: '/pages/index/index' })
@@ -121,11 +238,22 @@ async function finishLogin() {
   <view class="login-page">
     <button class="back" aria-label="返回" @click="goBack">‹</button>
     <view class="hero-glow" />
-    <image class="mascot" :class="{ 'mascot--profile': profileStep }" src="/static/images/home/icon-blind-box.png" mode="aspectFit" />
-    <text class="title">{{ profileStep ? '让饭搭子认出你' : '欢迎来到饭搭子' }}</text>
-    <text class="subtitle">{{ profileStep ? '头像和昵称会显示给同桌的饭搭子' : hasMealInvitation ? '微信登录后加入饭局，一起决定今晚吃什么' : '今天吃什么？饭搭子帮你决定' }}</text>
+    <image class="mascot" :class="{ 'mascot--compact': currentStep !== 'login' }" src="/static/images/home/icon-blind-box.png" mode="aspectFit" />
+    <text class="title">{{ title }}</text>
+    <text class="subtitle">{{ subtitle }}</text>
 
-    <view v-if="profileStep" class="profile-form">
+    <view v-if="currentStep === 'phone'" class="permission-card">
+      <view class="permission-card__icon">📱</view>
+      <text class="permission-card__title">微信验证手机号</text>
+      <text v-if="phoneBound" class="permission-card__status">已绑定 {{ phoneMasked }}</text>
+      <button v-if="!privacySettingReady" class="login-button login-button--permission" loading disabled>正在确认微信授权…</button>
+      <button v-else-if="privacyAuthorizationRequired" class="login-button login-button--permission" open-type="agreePrivacyAuthorization" @agreeprivacyauthorization="privacyAuthorized">同意隐私保护指引并继续</button>
+      <button v-else class="login-button login-button--permission" open-type="getPhoneNumber" :loading="bindingPhone" :disabled="bindingPhone" @getphonenumber="bindPhone">{{ bindingPhone ? '正在绑定…' : '选择微信手机号' }}</button>
+      <button class="privacy-link" @click="openPrivacyContract">查看《小程序用户隐私保护指引》</button>
+      <button class="skip-button" @click="continueAfterPhone">暂不绑定，继续点菜</button>
+    </view>
+
+    <view v-else-if="profileStep" class="profile-form">
       <button class="avatar-picker" open-type="chooseAvatar" @chooseavatar="chooseAvatar">
         <image v-if="(avatarTempPath || profile.avatar) && !avatarLoadFailed" :src="avatarTempPath || profile.avatar" mode="aspectFill" @error="avatarLoadFailed = true" />
         <text v-else>选择头像</text>
@@ -143,7 +271,7 @@ async function finishLogin() {
       <text>{{ loggingIn ? '正在登录…' : authenticated ? '继续进入饭搭子' : '微信一键登录' }}</text>
     </button>
     <text v-if="errorMessage" class="error-message">{{ errorMessage }}</text>
-    <text class="agreement">登录即表示同意《用户协议》和《隐私政策》</text>
+    <text v-if="currentStep === 'login'" class="agreement">手机号、头像和通知均由微信逐项确认，可按需跳过</text>
   </view>
 </template>
 
@@ -153,7 +281,7 @@ async function finishLogin() {
 .back { position: absolute; z-index: 2; top: calc(var(--status-bar-height) + 18rpx); left: 30rpx; width: 70rpx; height: 70rpx; color: $color-text; font-size: 58rpx; }
 .hero-glow { position: absolute; top: 120rpx; width: 560rpx; height: 470rpx; border-radius: 50%; background: radial-gradient(circle, rgba(255, 219, 174, .62), transparent 70%); }
 .mascot { position: relative; width: 260rpx; height: 260rpx; margin-top: 230rpx; }
-.mascot--profile { width: 190rpx; height: 190rpx; margin-top: 150rpx; }
+.mascot--compact { width: 190rpx; height: 190rpx; margin-top: 150rpx; }
 .title { position: relative; margin-top: 38rpx; font-size: 42rpx; font-weight: 800; }
 .subtitle { position: relative; margin-top: 18rpx; color: $color-text-secondary; font-size: 26rpx; }
 .login-button { display: flex; width: 100%; height: 94rpx; margin-top: 170rpx; align-items: center; justify-content: center; color: #fff; border-radius: 999rpx; background: $color-success; box-shadow: 0 12rpx 28rpx rgba(84, 130, 62, .18); font-size: 29rpx; font-weight: 700; }
@@ -163,6 +291,13 @@ async function finishLogin() {
 .avatar-picker__badge { position: absolute; right: -3rpx; bottom: 2rpx; display: flex; width: 48rpx; height: 48rpx; align-items: center; justify-content: center; border: 3rpx solid #fff; border-radius: 50%; background: $color-primary; color: #fff; font-size: 24rpx; }
 .nickname-input { width: 100%; height: 88rpx; margin-top: 30rpx; padding: 0 28rpx; border: 1rpx solid rgba(139, 96, 60, .1); border-radius: 24rpx; background: #fff; color: $color-text; font-size: 28rpx; box-shadow: $shadow-card; box-sizing: border-box; }
 .login-button--profile { margin-top: 28rpx; }
+.permission-card { position: relative; display: flex; width: 100%; margin-top: 48rpx; padding: 34rpx 30rpx 24rpx; align-items: center; flex-direction: column; border: 1rpx solid rgba(139, 96, 60, .1); border-radius: 30rpx; background: rgba(255, 255, 255, .92); box-shadow: $shadow-card; box-sizing: border-box; }
+.permission-card__icon { display: flex; width: 86rpx; height: 86rpx; align-items: center; justify-content: center; border-radius: 50%; background: #eaf6e5; font-size: 42rpx; }
+.permission-card__title { margin-top: 18rpx; color: $color-text; font-size: 30rpx; font-weight: 800; }
+.permission-card__status { margin-top: 10rpx; color: $color-text-secondary; font-size: 24rpx; }
+.login-button--permission { margin-top: 30rpx; background: $color-success; }
+.skip-button { min-width: 260rpx; min-height: 68rpx; margin-top: 14rpx; color: $color-text-secondary; font-size: 25rpx; }
+.privacy-link { min-height: 58rpx; margin-top: 10rpx; color: $color-primary-deep; font-size: 24rpx; text-decoration: underline; }
 .login-button[disabled] { opacity: .72; }
 .wechat { position: relative; width: 46rpx; height: 38rpx; margin-right: 14rpx; flex: 0 0 46rpx; }
 .wechat__bubble { position: absolute; border-radius: 50%; background: #fff; }

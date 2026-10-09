@@ -3,6 +3,7 @@ import pg from 'pg'
 import type { PoolClient } from 'pg'
 import type { Recipe, RecipeRepository } from '../recipes/types.js'
 import { DEFAULT_CATEGORIES, defaultCategoryRecipeIds } from './repository.js'
+import { resolveMealSlot } from './schedule.js'
 import {
   InvalidInviteError,
   MealAccessDeniedError,
@@ -15,18 +16,20 @@ import {
   type MealMemberRole,
   type MealRepository,
   type MealStatus,
+  type MealType,
 } from './types.js'
 
 const { Pool } = pg
 
 const CATEGORY_SEED_MIGRATION = 'meal-categories-v1'
+const LUNCH_MEAL_TYPE_MIGRATION = 'meal-types-lunch-v2'
 
 interface MealRow {
   meal_id: string
   owner_id: string
   title: string
   meal_at: Date | string
-  meal_type: 'dinner'
+  meal_type: MealType
   status: MealStatus
   invite_code: string
   invite_expires_at: Date | string
@@ -93,8 +96,10 @@ function validateMealInput(input: MealCreateInput): MealCreateInput {
   const mealAt = new Date(input.mealAt)
   if (!title || title.length > 40) throw new MealValidationError('饭局名称格式无效')
   if (Number.isNaN(mealAt.getTime())) throw new MealValidationError('用餐时间格式无效')
-  if (input.mealType !== 'dinner') throw new MealValidationError('当前仅支持晚餐')
-  return { title, mealAt: mealAt.toISOString(), mealType: 'dinner' }
+  if (input.mealType !== 'lunch' && input.mealType !== 'dinner') {
+    throw new MealValidationError('餐次类型仅支持午餐或晚餐')
+  }
+  return { title, mealAt: mealAt.toISOString(), mealType: input.mealType }
 }
 
 function isForeignKeyError(error: unknown): boolean {
@@ -119,7 +124,7 @@ export async function createPostgresMealRepository(
         owner_id TEXT NOT NULL,
         title TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 40),
         meal_at TIMESTAMPTZ NOT NULL,
-        meal_type TEXT NOT NULL CHECK (meal_type IN ('dinner')),
+        meal_type TEXT NOT NULL CHECK (meal_type IN ('lunch', 'dinner')),
         status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'confirmed', 'closed')),
         invite_code TEXT NOT NULL UNIQUE,
         invite_expires_at TIMESTAMPTZ NOT NULL,
@@ -207,7 +212,24 @@ export async function createPostgresMealRepository(
     const migrationClient = await pool.connect()
     try {
       await migrationClient.query('BEGIN')
-      await migrationClient.query("SELECT pg_advisory_xact_lock(hashtext('fandazi-meal-category-seed'))")
+      await migrationClient.query("SELECT pg_advisory_xact_lock(hashtext('fandazi-meal-schema'))")
+      const lunchMealTypeMigration = await migrationClient.query<{ migration_id: string }>(
+        'SELECT migration_id FROM fandazi_meal_schema_migration WHERE migration_id = $1',
+        [LUNCH_MEAL_TYPE_MIGRATION],
+      )
+      if (!lunchMealTypeMigration.rowCount) {
+        await migrationClient.query(`
+          ALTER TABLE fandazi_meal
+            DROP CONSTRAINT IF EXISTS fandazi_meal_meal_type_check;
+          ALTER TABLE fandazi_meal
+            ADD CONSTRAINT fandazi_meal_meal_type_check
+            CHECK (meal_type IN ('lunch', 'dinner'));
+        `)
+        await migrationClient.query(
+          'INSERT INTO fandazi_meal_schema_migration (migration_id) VALUES ($1)',
+          [LUNCH_MEAL_TYPE_MIGRATION],
+        )
+      }
       const migration = await migrationClient.query<{ migration_id: string }>(
         'SELECT migration_id FROM fandazi_meal_schema_migration WHERE migration_id = $1',
         [CATEGORY_SEED_MIGRATION],
@@ -447,18 +469,25 @@ export async function createPostgresMealRepository(
 
   return {
     async getCurrent(userId) {
+      const targetSlot = resolveMealSlot()
       const result = await pool.query<{ meal_id: string }>(
         `SELECT m.meal_id
-         FROM fandazi_user_current_meal cm
-         JOIN fandazi_meal m ON m.meal_id = cm.meal_id
-         JOIN fandazi_meal_member mm
-           ON mm.meal_id = m.meal_id AND mm.user_id = cm.user_id
-         WHERE cm.user_id = $1
+         FROM fandazi_meal_member mm
+         JOIN fandazi_meal m ON m.meal_id = mm.meal_id
+         LEFT JOIN fandazi_user_current_meal cm
+           ON cm.user_id = mm.user_id AND cm.meal_id = m.meal_id
+         WHERE mm.user_id = $1
            AND m.status IN ('active', 'confirmed')
+           AND m.meal_type = $3
            AND (m.meal_at AT TIME ZONE 'Asia/Shanghai')::DATE
-             >= (NOW() AT TIME ZONE 'Asia/Shanghai')::DATE
+             = ($2::TIMESTAMPTZ AT TIME ZONE 'Asia/Shanghai')::DATE
+         ORDER BY (cm.meal_id IS NOT NULL) DESC,
+                  (mm.role = 'member') DESC,
+                  GREATEST(mm.joined_at, m.updated_at) DESC,
+                  m.created_at DESC,
+                  m.meal_id DESC
          LIMIT 1`,
-        [userId],
+        [userId, targetSlot.mealAt.toISOString(), targetSlot.mealType],
       )
       const mealId = result.rows[0]?.meal_id
       return mealId ? aggregate(mealId, userId) : undefined
@@ -486,11 +515,12 @@ export async function createPostgresMealRepository(
            FROM fandazi_meal m
            WHERE m.owner_id = $1
              AND m.status = 'active'
+             AND m.meal_type = $3
              AND (m.meal_at AT TIME ZONE 'Asia/Shanghai')::DATE
                = ($2::TIMESTAMPTZ AT TIME ZONE 'Asia/Shanghai')::DATE
            ORDER BY m.updated_at DESC, m.created_at DESC
            LIMIT 1`,
-          [userId, validated.mealAt],
+          [userId, validated.mealAt, validated.mealType],
         )
         const existingMealId = existing.rows[0]?.meal_id
         if (existingMealId) {

@@ -54,6 +54,8 @@ export const useRecipeStore = defineStore('recipe', () => {
   const userLoaded = ref(false)
   const userLoading = ref(false)
   const userErrorMessage = ref('')
+  const phoneBound = ref(false)
+  const phoneMasked = ref('')
 
   const statusLabel = computed(() => (
     statusOptions.value.find(item => item.id === selectedStatus.value)?.name ?? '今日'
@@ -76,6 +78,8 @@ export const useRecipeStore = defineStore('recipe', () => {
     cookedRecipeIds.value = state.cookedRecipeIds
     plannedRecipeIds.value = state.plannedRecipeIds
     profile.value = state.profile
+    phoneBound.value = Boolean(state.phoneBound)
+    phoneMasked.value = state.phoneMasked || ''
     recommendation.value = withLocalState(recommendation.value)
     blindBoxRecipe.value = withLocalState(blindBoxRecipe.value)
     recipes.value = recipes.value.map(withLocalState)
@@ -311,6 +315,8 @@ export const useRecipeStore = defineStore('recipe', () => {
     userLoaded,
     userLoading,
     userErrorMessage,
+    phoneBound,
+    phoneMasked,
     applyUserState,
     loadBootstrap,
     loadRecipes,

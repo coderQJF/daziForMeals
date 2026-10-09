@@ -11,6 +11,8 @@ export interface UserDashboard {
   cookedRecipeIds: number[]
   plannedRecipeIds: number[]
   profile: UserProfile
+  phoneBound: boolean
+  phoneMasked: string
   stats: {
     favorites: number
     likes: number

@@ -1,6 +1,26 @@
 import { categorySeeds, getSeedTaggings, recipeSeeds, statusSeeds, type SeedRecipe } from './seed.js'
 import { planMealSeeds, planReminders, planSummary, takeoutShops } from '../experience/seed.js'
-import type { BootstrapPayload, Category, PlanPayload, Recipe, RecipeQuery, RecipeRepository, UserState, UserStateUpdate } from './types.js'
+import type { BootstrapPayload, Category, PlanPayload, Recipe, RecipeQuery, RecipeRepository, UserState, UserStateUpdate, WechatAccount, WechatNotificationSubscription } from './types.js'
+
+function maskPhoneNumber(phoneNumber: string | undefined): string {
+  if (!phoneNumber) return ''
+  if (phoneNumber.length <= 7) return `${phoneNumber.slice(0, 2)}***${phoneNumber.slice(-2)}`
+  return `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-4)}`
+}
+
+export function normalizeNotificationSubscriptions(account: WechatAccount | undefined): WechatNotificationSubscription[] {
+  const subscriptions = Array.isArray(account?.notificationSubscriptions)
+    ? account.notificationSubscriptions
+    : []
+  const unique = new Map<string, WechatNotificationSubscription>()
+  for (const value of subscriptions) {
+    const subscription = value as Partial<WechatNotificationSubscription> | null
+    const mealId = typeof subscription?.mealId === 'string' ? subscription.mealId.trim() : ''
+    const templateId = typeof subscription?.templateId === 'string' ? subscription.templateId.trim() : ''
+    if (mealId && templateId) unique.set(`${mealId}\u0000${templateId}`, { mealId, templateId })
+  }
+  return [...unique.values()]
+}
 
 export function createAssetUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
@@ -175,6 +195,55 @@ export function createMemoryRecipeRepository(assetBaseUrl: string): RecipeReposi
       userStates.set(userClientId, claimed)
       return structuredClone(claimed)
     },
+    async setWechatIdentity(clientId, identity) {
+      const current = getState(clientId)
+      const next: UserState = {
+        ...current,
+        wechat: {
+          ...current.wechat,
+          openid: identity.openid,
+          ...(identity.unionid ? { unionid: identity.unionid } : {}),
+          notificationSubscriptions: normalizeNotificationSubscriptions(current.wechat),
+        },
+      }
+      userStates.set(clientId, next)
+      return structuredClone(next)
+    },
+    async setWechatPhone(clientId, phone) {
+      const current = getState(clientId)
+      if (!current.wechat?.openid) throw new Error('请重新完成微信登录后再绑定手机号')
+      const next: UserState = {
+        ...current,
+        wechat: {
+          ...current.wechat,
+          phone: { ...phone, boundAt: new Date().toISOString() },
+        },
+      }
+      userStates.set(clientId, next)
+      return structuredClone(next)
+    },
+    async setNotificationSubscription(clientId, mealId, templateId, subscribed) {
+      const current = getState(clientId)
+      if (!current.wechat?.openid) throw new Error('请重新完成微信登录后再开启通知')
+      const subscriptions = normalizeNotificationSubscriptions(current.wechat)
+        .filter(item => item.mealId !== mealId || item.templateId !== templateId)
+      if (subscribed) subscriptions.push({ mealId, templateId })
+      const next: UserState = {
+        ...current,
+        wechat: { ...current.wechat, notificationSubscriptions: subscriptions },
+      }
+      userStates.set(clientId, next)
+      return structuredClone(next)
+    },
+    async getNotificationRecipients(clientIds, mealId, templateId) {
+      return [...new Set(clientIds)].flatMap((clientId) => {
+        const account = userStates.get(clientId)?.wechat
+        return account?.openid && normalizeNotificationSubscriptions(account)
+          .some(item => item.mealId === mealId && item.templateId === templateId)
+          ? [{ clientId, openid: account.openid }]
+          : []
+      })
+    },
     async getPlan(clientId, date) {
       return mapPlanPayload(recipes, getState(clientId), date)
     },
@@ -194,6 +263,7 @@ export function createMemoryRecipeRepository(assetBaseUrl: string): RecipeReposi
           id: state.clientId,
           accountType: state.clientId.startsWith('wechat:') ? 'wechat' as const : 'guest' as const,
           nickname: state.profile.nickname,
+          phoneMasked: maskPhoneNumber(state.wechat?.phone?.purePhoneNumber),
           favorites: state.favoriteRecipeIds.length,
           likes: state.likedRecipeIds.length,
           cooked: state.cookedRecipeIds.length,

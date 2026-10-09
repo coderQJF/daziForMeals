@@ -11,7 +11,9 @@ import {
   type MealCreateInput,
   type MealMemberRole,
   type MealRepository,
+  type MealType,
 } from './types.js'
+import { chinaDateKey, isMealInSlot, resolveMealSlot } from './schedule.js'
 
 interface StoredMember {
   userId: string
@@ -31,7 +33,7 @@ interface StoredMeal {
   ownerId: string
   title: string
   mealAt: string
-  mealType: 'dinner'
+  mealType: MealType
   status: 'active' | 'confirmed' | 'closed'
   inviteCode: string
   inviteExpiresAt: string
@@ -115,15 +117,6 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
 
   function ensureActive(meal: StoredMeal): void {
     if (meal.status !== 'active') throw new MealValidationError('饭局已确认，不能再修改')
-  }
-
-  function chinaDate(value: string | Date): string {
-    const date = value instanceof Date ? value : new Date(value)
-    const china = new Date(date.getTime() + 8 * 60 * 60 * 1000)
-    const year = china.getUTCFullYear()
-    const month = String(china.getUTCMonth() + 1).padStart(2, '0')
-    const day = String(china.getUTCDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
   }
 
   function inviteIsExpired(meal: StoredMeal): boolean {
@@ -210,21 +203,48 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
 
   return {
     async getCurrent(userId) {
-      const mealId = currentMealByUser.get(userId)
-      const current = mealId ? meals.get(mealId) : undefined
-      if (!current || !current.members.has(userId) || !['active', 'confirmed'].includes(current.status)) return undefined
-      if (chinaDate(current.mealAt) < chinaDate(new Date())) return undefined
-      return aggregate(current, userId)
+      const currentMealId = currentMealByUser.get(userId)
+      const targetSlot = resolveMealSlot()
+      const candidates = [...meals.values()]
+        .filter(meal => (
+          meal.members.has(userId)
+          && ['active', 'confirmed'].includes(meal.status)
+          && isMealInSlot(meal.mealAt, meal.mealType, targetSlot)
+        ))
+        .sort((left, right) => {
+          const currentPriority = Number(right.id === currentMealId) - Number(left.id === currentMealId)
+          if (currentPriority !== 0) return currentPriority
+
+          const leftMember = left.members.get(userId)
+          const rightMember = right.members.get(userId)
+          const sharedPriority = Number(rightMember?.role === 'member') - Number(leftMember?.role === 'member')
+          if (sharedPriority !== 0) return sharedPriority
+
+          const leftActivityAt = Math.max(
+            new Date(leftMember?.joinedAt ?? 0).getTime(),
+            new Date(left.updatedAt).getTime(),
+          )
+          const rightActivityAt = Math.max(
+            new Date(rightMember?.joinedAt ?? 0).getTime(),
+            new Date(right.updatedAt).getTime(),
+          )
+          return rightActivityAt - leftActivityAt
+            || right.createdAt.localeCompare(left.createdAt)
+            || right.id.localeCompare(left.id)
+        })
+      const current = candidates[0]
+      return current ? aggregate(current, userId) : undefined
     },
 
     async createMeal(userId, input: MealCreateInput) {
       return withCreateLock(userId, async () => {
         await recipes.getUserState(userId)
-        const targetDate = chinaDate(input.mealAt)
+        const targetDate = chinaDateKey(input.mealAt)
         const existing = [...meals.values()].find(meal => (
           meal.ownerId === userId
           && meal.status === 'active'
-          && chinaDate(meal.mealAt) === targetDate
+          && meal.mealType === input.mealType
+          && chinaDateKey(meal.mealAt) === targetDate
         ))
         if (existing) {
           currentMealByUser.set(userId, existing.id)

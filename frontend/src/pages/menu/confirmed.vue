@@ -20,12 +20,14 @@ const {
 const avatarErrors = ref<string[]>([])
 const startingOver = ref(false)
 const redirecting = ref(false)
+const requestedMealId = ref('')
 
 async function loadConfirmedMenu(force = false) {
-  await mealStore.loadMeal(force)
+  if (requestedMealId.value) await mealStore.loadMealById(requestedMealId.value, force)
+  else await mealStore.loadMeal(force)
   if (meal.value?.status === 'active' && !redirecting.value) {
     redirecting.value = true
-    uni.redirectTo({ url: '/pages/menu/menu' })
+    uni.redirectTo({ url: `/pages/menu/menu?mealId=${encodeURIComponent(meal.value.id)}` })
   }
 }
 
@@ -58,7 +60,10 @@ function canShowAvatar(userId: string, avatar: string) {
   return Boolean(avatar && !avatarErrors.value.includes(userId))
 }
 
-onLoad(() => void loadConfirmedMenu(true))
+onLoad((options) => {
+  requestedMealId.value = typeof options?.mealId === 'string' ? options.mealId.trim() : ''
+  void loadConfirmedMenu(true)
+})
 onShow(() => {
   mealStore.refreshAuth()
   void loadConfirmedMenu(true)

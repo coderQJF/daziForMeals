@@ -8,7 +8,7 @@ import { hasAuthToken } from '@/services/http'
 import { useRecipeStore } from '@/stores/recipe'
 
 const recipeStore = useRecipeStore()
-const { profile } = storeToRefs(recipeStore)
+const { profile, phoneBound, phoneMasked } = storeToRefs(recipeStore)
 const nickname = ref('')
 const bio = ref('')
 const avatarTempPath = ref('')
@@ -26,6 +26,10 @@ function chooseAvatar(event: any) {
   if (typeof path !== 'string' || !path) return
   avatarTempPath.value = path
   avatarLoadFailed.value = false
+}
+
+function manageWechatAccount() {
+  uni.navigateTo({ url: '/pages/login/login' })
 }
 
 async function saveProfile() {
@@ -56,11 +60,12 @@ async function saveProfile() {
   }
 }
 
-onShow(() => {
+onShow(async () => {
   if (!hasAuthToken()) {
     uni.redirectTo({ url: '/pages/login/login' })
     return
   }
+  await recipeStore.loadUserState(true)
   nickname.value = profile.value.nickname
   bio.value = profile.value.bio
   avatarTempPath.value = ''
@@ -99,6 +104,11 @@ onShow(() => {
         <textarea v-model="bio" class="field__textarea" maxlength="120" placeholder="写一句关于吃饭的小心情" />
         <text class="field__count">{{ bio.length }}/120</text>
       </label>
+      <button class="field account-field" @click="manageWechatAccount">
+        <text class="field__label">微信手机号</text>
+        <text class="account-field__value">{{ phoneBound ? phoneMasked : '未绑定' }}</text>
+        <text class="account-field__chevron">›</text>
+      </button>
     </view>
 
     <button class="save-button" :loading="saving" :disabled="saving" @click="saveProfile">
@@ -223,8 +233,11 @@ onShow(() => {
   padding: 26rpx 0 38rpx;
   align-items: stretch;
   flex-direction: column;
-  border-bottom: 0;
 }
+
+.account-field { width: 100%; text-align: left; }
+.account-field__value { min-width: 0; flex: 1; color: $color-text-secondary; font-size: 26rpx; text-align: right; }
+.account-field__chevron { margin-left: 12rpx; color: $color-text-muted; font-size: 38rpx; }
 
 .field__label {
   width: 150rpx;

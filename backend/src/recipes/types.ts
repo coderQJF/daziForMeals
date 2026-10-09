@@ -85,6 +85,27 @@ export interface UserProfile {
   avatar: string
 }
 
+export interface WechatPhone {
+  phoneNumber: string
+  purePhoneNumber: string
+  countryCode: string
+  boundAt: string
+}
+
+export interface WechatNotificationSubscription {
+  mealId: string
+  templateId: string
+}
+
+export interface WechatAccount {
+  openid: string
+  unionid?: string
+  phone?: WechatPhone
+  notificationSubscriptions: WechatNotificationSubscription[]
+  /** Legacy unscoped grants are retained only for storage compatibility and are never consumed. */
+  notificationTemplateIds?: string[]
+}
+
 export interface UserState {
   clientId: string
   selectedStatus: string
@@ -93,11 +114,16 @@ export interface UserState {
   cookedRecipeIds: number[]
   plannedRecipeIds: number[]
   profile: UserProfile
+  wechat?: WechatAccount
 }
 
-export type UserStateUpdate = Partial<Omit<UserState, 'clientId'>>
+export type UserStateUpdate = Partial<Pick<UserState,
+  'selectedStatus' | 'favoriteRecipeIds' | 'likedRecipeIds' | 'cookedRecipeIds' | 'plannedRecipeIds' | 'profile'>>
 
 export interface UserDashboard extends Omit<UserState, 'clientId'> {
+  wechat?: never
+  phoneBound: boolean
+  phoneMasked: string
   stats: {
     favorites: number
     likes: number
@@ -169,6 +195,7 @@ export interface OperationsUser {
   id: string
   accountType: 'wechat' | 'guest'
   nickname: string
+  phoneMasked: string
   favorites: number
   likes: number
   cooked: number
@@ -183,6 +210,10 @@ export interface RecipeRepository {
   getUserState(clientId: string): Promise<UserState>
   updateUserState(clientId: string, update: UserStateUpdate): Promise<UserState>
   claimUserState(sourceClientId: string, userClientId: string): Promise<UserState>
+  setWechatIdentity(clientId: string, identity: Pick<WechatAccount, 'openid' | 'unionid'>): Promise<UserState>
+  setWechatPhone(clientId: string, phone: Omit<WechatPhone, 'boundAt'>): Promise<UserState>
+  setNotificationSubscription(clientId: string, mealId: string, templateId: string, subscribed: boolean): Promise<UserState>
+  getNotificationRecipients(clientIds: string[], mealId: string, templateId: string): Promise<Array<{ clientId: string, openid: string }>>
   getPlan(clientId: string, date: string): Promise<PlanPayload>
   listTakeout(category?: string): Promise<TakeoutShop[]>
   operationsSummary(): Promise<OperationsSummary>

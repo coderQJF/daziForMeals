@@ -18,7 +18,8 @@ export class ApiError extends Error {
 }
 
 const CLIENT_ID_STORAGE_KEY = 'fandaziClientId'
-const AUTH_TOKEN_STORAGE_KEY = 'fandaziAuthToken'
+const AUTH_TOKEN_STORAGE_KEY = 'fandaziAuthTokenV2'
+const LEGACY_AUTH_TOKEN_STORAGE_KEY = 'fandaziAuthToken'
 
 function getClientId(): string {
   const existing = uni.getStorageSync(CLIENT_ID_STORAGE_KEY)
@@ -37,11 +38,13 @@ function getRequestHeaders(): Record<string, string> {
 
 export function setAuthToken(token: string): void {
   uni.setStorageSync(AUTH_TOKEN_STORAGE_KEY, token)
+  uni.removeStorageSync(LEGACY_AUTH_TOKEN_STORAGE_KEY)
   uni.removeStorageSync('isLoggedIn')
 }
 
 export function clearAuthToken(): void {
   uni.removeStorageSync(AUTH_TOKEN_STORAGE_KEY)
+  uni.removeStorageSync(LEGACY_AUTH_TOKEN_STORAGE_KEY)
   uni.removeStorageSync('isLoggedIn')
 }
 
