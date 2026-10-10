@@ -30,6 +30,29 @@ export interface Recipe {
   difficulty: '简单' | '适中' | '进阶'
   ingredients: Ingredient[]
   steps: RecipeStep[]
+  sortOrder: number
+}
+
+export interface RecipeInput {
+  id?: number
+  name: string
+  cover: string
+  hero: string
+  thumbnail: string
+  categoryId: string
+  categoryIds: string[]
+  category: string
+  tags: string[]
+  statusIds: string[]
+  reason: string
+  cookTime: number
+  calories: number
+  popularity: number
+  servings: number
+  difficulty: Recipe['difficulty']
+  ingredients: Ingredient[]
+  steps: RecipeStep[]
+  sortOrder: number
 }
 
 export interface Category {
@@ -207,6 +230,8 @@ export interface RecipeRepository {
   recommend(clientId: string, status: string, excludeIds?: number[]): Promise<Recipe>
   list(query: RecipeQuery): Promise<Recipe[]>
   findById(id: number): Promise<Recipe | undefined>
+  upsertRecipe(input: RecipeInput): Promise<Recipe>
+  deleteRecipe(id: number): Promise<boolean>
   getUserState(clientId: string): Promise<UserState>
   updateUserState(clientId: string, update: UserStateUpdate): Promise<UserState>
   claimUserState(sourceClientId: string, userClientId: string): Promise<UserState>

@@ -144,6 +144,66 @@ test('operations recipe catalog requires authorization and returns the complete 
   }
 })
 
+test('operations can create, update, and delete recipes', async () => {
+  const app = buildApp({ logger: false, opsAdminToken: 'operations-secret' })
+  const headers = { authorization: 'Bearer operations-secret' }
+  const recipe = {
+    name: '番茄豆腐煲',
+    cover: 'https://images.example.test/tomato-tofu.jpg',
+    hero: 'https://images.example.test/tomato-tofu.jpg',
+    thumbnail: 'https://images.example.test/tomato-tofu-thumb.jpg',
+    categoryId: 'home-style',
+    categoryIds: ['home-style', 'light'],
+    category: '家常菜',
+    tags: ['高蛋白', '暖胃'],
+    statusIds: ['normal', 'recover'],
+    reason: '清爽下饭，适合日常搭配。',
+    cookTime: 25,
+    calories: 360,
+    popularity: 0,
+    servings: 2,
+    difficulty: '简单',
+    ingredients: [{ name: '番茄', amount: '2个', icon: '🍅' }, { name: '豆腐', amount: '300克', icon: '' }],
+    steps: [{ text: '番茄炒出汤汁后加入豆腐焖煮。', image: 'https://images.example.test/tomato-tofu.jpg' }],
+    sortOrder: 30,
+  }
+
+  try {
+    const denied = await app.inject({ method: 'PUT', url: '/api/v1/operations/recipes', payload: recipe })
+    assert.equal(denied.statusCode, 401, denied.body)
+
+    const created = await app.inject({ method: 'PUT', url: '/api/v1/operations/recipes', headers, payload: recipe })
+    assert.equal(created.statusCode, 201, created.body)
+    const createdRecipe = created.json().data
+    assert.ok(createdRecipe.id > 0)
+    assert.equal(createdRecipe.name, recipe.name)
+    assert.equal(createdRecipe.cover, recipe.cover)
+
+    const publicRecipe = await app.inject({ method: 'GET', url: `/api/v1/recipes/${createdRecipe.id}` })
+    assert.equal(publicRecipe.statusCode, 200, publicRecipe.body)
+    assert.equal(publicRecipe.json().data.name, recipe.name)
+
+    const updated = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/operations/recipes',
+      headers,
+      payload: { ...recipe, id: createdRecipe.id, name: '番茄嫩豆腐煲', cookTime: 20 },
+    })
+    assert.equal(updated.statusCode, 200, updated.body)
+    assert.equal(updated.json().data.name, '番茄嫩豆腐煲')
+    assert.equal(updated.json().data.cookTime, 20)
+
+    const deleted = await app.inject({ method: 'DELETE', url: `/api/v1/operations/recipes?id=${createdRecipe.id}`, headers })
+    assert.equal(deleted.statusCode, 200, deleted.body)
+    assert.deepEqual(deleted.json().data, { id: createdRecipe.id, deleted: true })
+
+    const missing = await app.inject({ method: 'GET', url: `/api/v1/recipes/${createdRecipe.id}` })
+    assert.equal(missing.statusCode, 404, missing.body)
+  } finally {
+    await app.close()
+  }
+})
+
 test('GET /api/v1/bootstrap returns API-backed home content', async () => {
   const app = buildApp({ logger: false })
   const response = await app.inject({ method: 'GET', url: '/api/v1/bootstrap?status=recover' })

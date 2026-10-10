@@ -21,7 +21,7 @@ import {
   type MealType,
 } from './meals/types.js'
 import { createMemoryRecipeRepository } from './recipes/repository.js'
-import type { RecipeQuery, RecipeRepository, UserDashboard, UserState, UserStateUpdate } from './recipes/types.js'
+import type { RecipeInput, RecipeQuery, RecipeRepository, UserDashboard, UserState, UserStateUpdate } from './recipes/types.js'
 
 export interface BuildAppOptions {
   logger?: boolean
@@ -199,6 +199,80 @@ function parseMealCategoryInput(body: unknown): MealCategoryInput {
   }
   if (!recipeIds) throw new MealValidationError('请提供菜类关联的菜谱')
   return { id, name, sortOrder, enabled: payload.enabled, recipeIds }
+}
+
+function parseRecipeStringList(value: unknown, label: string, maximum = 20): string[] {
+  if (!Array.isArray(value) || value.length > maximum || value.some(item => typeof item !== 'string')) {
+    throw new MealValidationError(`${label}格式无效`)
+  }
+  const items = value.map(item => (item as string).trim()).filter(Boolean)
+  if (items.some(item => item.length > 40)) throw new MealValidationError(`${label}格式无效`)
+  return [...new Set(items)]
+}
+
+function parseRecipeInput(body: unknown): RecipeInput {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new MealValidationError('菜品数据格式无效')
+  const payload = body as Record<string, unknown>
+  const name = typeof payload.name === 'string' ? payload.name.trim() : ''
+  const cover = typeof payload.cover === 'string' ? payload.cover.trim() : ''
+  const hero = typeof payload.hero === 'string' ? payload.hero.trim() : cover
+  const thumbnail = typeof payload.thumbnail === 'string' ? payload.thumbnail.trim() : cover
+  const categoryId = typeof payload.categoryId === 'string' ? payload.categoryId.trim() : ''
+  const category = typeof payload.category === 'string' ? payload.category.trim() : ''
+  const reason = typeof payload.reason === 'string' ? payload.reason.trim() : ''
+  const difficulty = payload.difficulty
+  const id = payload.id === undefined || payload.id === null || payload.id === '' ? undefined : Number(payload.id)
+  const cookTime = Number(payload.cookTime)
+  const calories = Number(payload.calories)
+  const popularity = Number(payload.popularity)
+  const servings = Number(payload.servings)
+  const sortOrder = Number(payload.sortOrder)
+  if (id !== undefined && (!Number.isInteger(id) || id < 1)) throw new MealValidationError('菜品编号格式无效')
+  if (!name || name.length > 50) throw new MealValidationError('菜品名称请填写 1—50 个字符')
+  if (!cover || cover.length > 500 || hero.length > 500 || thumbnail.length > 500) throw new MealValidationError('菜品图片地址格式无效')
+  if (!/^[a-z][a-z0-9-]{0,39}$/.test(categoryId)) throw new MealValidationError('基础分类编号格式无效')
+  if (!category || category.length > 30) throw new MealValidationError('基础分类名称格式无效')
+  if (!reason || reason.length > 160) throw new MealValidationError('推荐理由请填写 1—160 个字符')
+  if (!Number.isInteger(cookTime) || cookTime < 1 || cookTime > 1440) throw new MealValidationError('烹饪时间需为 1—1440 分钟')
+  if (!Number.isInteger(calories) || calories < 0 || calories > 10000) throw new MealValidationError('热量需为 0—10000 千卡')
+  if (!Number.isInteger(popularity) || popularity < 0 || popularity > 100000000) throw new MealValidationError('热度格式无效')
+  if (!Number.isInteger(servings) || servings < 1 || servings > 100) throw new MealValidationError('份数需为 1—100')
+  if (!Number.isInteger(sortOrder) || sortOrder < -10000 || sortOrder > 10000) throw new MealValidationError('菜品排序值无效')
+  if (difficulty !== '简单' && difficulty !== '适中' && difficulty !== '进阶') throw new MealValidationError('菜品难度格式无效')
+
+  const categoryIds = parseRecipeStringList(payload.categoryIds, '分类编号', 10)
+  if (!categoryIds.length) categoryIds.push(categoryId)
+  if (!categoryIds.includes(categoryId)) categoryIds.unshift(categoryId)
+  if (categoryIds.some(value => !/^[a-z][a-z0-9-]{0,39}$/.test(value))) throw new MealValidationError('分类编号格式无效')
+  const tags = parseRecipeStringList(payload.tags, '菜品标签')
+  const statusIds = parseRecipeStringList(payload.statusIds, '状态标签')
+
+  if (!Array.isArray(payload.ingredients) || !payload.ingredients.length || payload.ingredients.length > 30) {
+    throw new MealValidationError('请填写 1—30 项食材')
+  }
+  const ingredients = payload.ingredients.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new MealValidationError('食材格式无效')
+    const ingredient = value as Record<string, unknown>
+    const ingredientName = typeof ingredient.name === 'string' ? ingredient.name.trim() : ''
+    const amount = typeof ingredient.amount === 'string' ? ingredient.amount.trim() : ''
+    const icon = typeof ingredient.icon === 'string' ? ingredient.icon.trim() : ''
+    if (!ingredientName || ingredientName.length > 40 || !amount || amount.length > 40 || icon.length > 200) throw new MealValidationError('食材格式无效')
+    return { name: ingredientName, amount, icon }
+  })
+
+  if (!Array.isArray(payload.steps) || !payload.steps.length || payload.steps.length > 20) {
+    throw new MealValidationError('请填写 1—20 个制作步骤')
+  }
+  const steps = payload.steps.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new MealValidationError('制作步骤格式无效')
+    const step = value as Record<string, unknown>
+    const text = typeof step.text === 'string' ? step.text.trim() : ''
+    const image = typeof step.image === 'string' ? step.image.trim() : cover
+    if (!text || text.length > 300 || !image || image.length > 500) throw new MealValidationError('制作步骤格式无效')
+    return { text, image }
+  })
+
+  return { ...(id ? { id } : {}), name, cover, hero, thumbnail, categoryId, categoryIds, category, tags, statusIds, reason, cookTime, calories, popularity, servings, difficulty, ingredients, steps, sortOrder }
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -413,6 +487,24 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       : 200
     const items = await repository.list({ sort: 'default', limit })
     return { data: items, meta: { total: items.length } }
+  })
+
+  app.put('/api/v1/operations/recipes', async (request, reply) => {
+    const error = operationsError(request.headers.authorization)
+    if (error) return reply.code(error.status).send({ error: { code: 'OPERATIONS_UNAUTHORIZED', message: error.message } })
+    const input = parseRecipeInput(request.body)
+    const recipe = await repository.upsertRecipe(input)
+    return reply.code(input.id ? 200 : 201).send({ data: recipe })
+  })
+
+  app.delete('/api/v1/operations/recipes', async (request, reply) => {
+    const error = operationsError(request.headers.authorization)
+    if (error) return reply.code(error.status).send({ error: { code: 'OPERATIONS_UNAUTHORIZED', message: error.message } })
+    const query = request.query as Record<string, unknown>
+    const id = parseRecipeId(query.id)
+    const deleted = await repository.deleteRecipe(id)
+    if (!deleted) return reply.code(404).send({ error: { code: 'RECIPE_NOT_FOUND', message: '菜品不存在' } })
+    return { data: { id, deleted: true } }
   })
 
   app.put('/api/v1/operations/meal-categories', async (request, reply) => {

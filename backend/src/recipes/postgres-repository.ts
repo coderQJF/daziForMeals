@@ -2,7 +2,7 @@ import pg from 'pg'
 import { categorySeeds, getSeedTaggings, recipeSeeds, recipeTagSeeds, statusSeeds, type SeedRecipe } from './seed.js'
 import { takeoutShops } from '../experience/seed.js'
 import { createDefaultUserState, isLegacyDemoUserState, mapCategory, mapPlanPayload, mapSeedRecipe, normalizeNotificationSubscriptions, sanitizeUserRecipeIds, selectRecommendation } from './repository.js'
-import type { BootstrapPayload, Category, Recipe, RecipeQuery, RecipeRepository, StatusOption, TakeoutShop, UserState, UserStateUpdate } from './types.js'
+import type { BootstrapPayload, Category, Recipe, RecipeInput, RecipeQuery, RecipeRepository, StatusOption, TakeoutShop, UserState, UserStateUpdate } from './types.js'
 
 const { Pool } = pg
 
@@ -43,6 +43,11 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS fandazi_recipe_sort_idx ON fandazi_recipe (sort_order, recipe_id);
+
+    CREATE TABLE IF NOT EXISTS fandazi_recipe_tombstone (
+      recipe_id INTEGER PRIMARY KEY,
+      deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
     CREATE TABLE IF NOT EXISTS fandazi_tag (
       tag_id TEXT PRIMARY KEY,
@@ -112,6 +117,10 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
       SELECT content_id::INTEGER, payload, sort_order, updated_at
       FROM fandazi_content
       WHERE content_type = 'recipe' AND content_id ~ '^[0-9]+$'
+        AND NOT EXISTS (
+          SELECT 1 FROM fandazi_recipe_tombstone
+          WHERE recipe_id = fandazi_content.content_id::INTEGER
+        )
       ON CONFLICT (recipe_id) DO NOTHING
     `)
 
@@ -134,9 +143,9 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
     for (const recipe of recipeSeeds) {
       await client.query(
         `INSERT INTO fandazi_recipe (recipe_id, payload, sort_order)
-         VALUES ($1, $2::jsonb, $3)
-         ON CONFLICT (recipe_id) DO UPDATE
-         SET payload = EXCLUDED.payload, sort_order = EXCLUDED.sort_order, updated_at = NOW()`,
+         SELECT $1, $2::jsonb, $3
+         WHERE NOT EXISTS (SELECT 1 FROM fandazi_recipe_tombstone WHERE recipe_id = $1)
+         ON CONFLICT (recipe_id) DO NOTHING`,
         [recipe.id, JSON.stringify(recipe), recipe.sortOrder],
       )
     }
@@ -153,7 +162,9 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
       for (const tagging of getSeedTaggings(recipe)) {
         await client.query(
           `INSERT INTO fandazi_recipe_tag (recipe_id, tag_id, weight, source, confidence)
-           VALUES ($1, $2, $3, $4, $5)
+           SELECT $1, $2, $3, $4, $5
+           WHERE EXISTS (SELECT 1 FROM fandazi_recipe WHERE recipe_id = $1)
+             AND NOT EXISTS (SELECT 1 FROM fandazi_recipe_tombstone WHERE recipe_id = $1)
            ON CONFLICT (recipe_id, tag_id) DO UPDATE
            SET weight = EXCLUDED.weight, source = EXCLUDED.source, confidence = EXCLUDED.confidence`,
           [recipe.id, tagging.tagId, tagging.weight, tagging.source, tagging.confidence],
@@ -334,6 +345,78 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
     async findById(id: number): Promise<Recipe | undefined> {
       return recipes.find(recipe => recipe.id === id)
     },
+    async upsertRecipe(input: RecipeInput): Promise<Recipe> {
+      const writeClient = await pool.connect()
+      try {
+        await writeClient.query('BEGIN')
+        await writeClient.query('LOCK TABLE fandazi_recipe IN SHARE ROW EXCLUSIVE MODE')
+        let id = input.id
+        if (!id) {
+          const next = await writeClient.query<{ recipe_id: number }>(`
+            SELECT GREATEST(
+              COALESCE((SELECT MAX(recipe_id) FROM fandazi_recipe), 1000),
+              COALESCE((SELECT MAX(recipe_id) FROM fandazi_recipe_tombstone), 1000)
+            ) + 1 AS recipe_id
+          `)
+          id = next.rows[0]?.recipe_id ?? 1001
+        }
+        const seed = recipeInputToSeed(input, id)
+        await writeClient.query(
+          `INSERT INTO fandazi_recipe_tombstone (recipe_id, deleted_at)
+           VALUES ($1, NOW())
+           ON CONFLICT (recipe_id) DO UPDATE SET deleted_at = EXCLUDED.deleted_at`,
+          [id],
+        )
+        await writeClient.query(
+          `INSERT INTO fandazi_recipe (recipe_id, payload, sort_order, updated_at)
+           VALUES ($1, $2::jsonb, $3, NOW())
+           ON CONFLICT (recipe_id) DO UPDATE
+           SET payload = EXCLUDED.payload, sort_order = EXCLUDED.sort_order, updated_at = NOW()`,
+          [id, JSON.stringify(seed), seed.sortOrder],
+        )
+        await writeClient.query('DELETE FROM fandazi_recipe_tag WHERE recipe_id = $1', [id])
+        await writeClient.query('COMMIT')
+
+        const recipe = mapSeedRecipe(seed, assetBaseUrl)
+        const index = recipes.findIndex(item => item.id === id)
+        if (index >= 0) recipes[index] = recipe
+        else recipes.push(recipe)
+        recipeIds.add(id)
+        return structuredClone(recipe)
+      } catch (error) {
+        await writeClient.query('ROLLBACK')
+        throw error
+      } finally {
+        writeClient.release()
+      }
+    },
+    async deleteRecipe(id: number): Promise<boolean> {
+      const writeClient = await pool.connect()
+      try {
+        await writeClient.query('BEGIN')
+        const deleted = await writeClient.query('DELETE FROM fandazi_recipe WHERE recipe_id = $1 RETURNING recipe_id', [id])
+        if (!deleted.rowCount) {
+          await writeClient.query('ROLLBACK')
+          return false
+        }
+        await writeClient.query(
+          `INSERT INTO fandazi_recipe_tombstone (recipe_id, deleted_at)
+           VALUES ($1, NOW())
+           ON CONFLICT (recipe_id) DO UPDATE SET deleted_at = EXCLUDED.deleted_at`,
+          [id],
+        )
+        await writeClient.query('COMMIT')
+        const index = recipes.findIndex(item => item.id === id)
+        if (index >= 0) recipes.splice(index, 1)
+        recipeIds.delete(id)
+        return true
+      } catch (error) {
+        await writeClient.query('ROLLBACK')
+        throw error
+      } finally {
+        writeClient.release()
+      }
+    },
     async getUserState(clientId) {
       return getOrCreateUserState(clientId)
     },
@@ -482,6 +565,30 @@ export async function createPostgresRecipeRepository(databaseUrl: string, assetB
     async close() {
       await pool.end()
     },
+  }
+}
+
+function recipeInputToSeed(input: RecipeInput, id: number): SeedRecipe {
+  return {
+    id,
+    name: input.name,
+    coverKey: input.cover,
+    heroKey: input.hero,
+    thumbnailKey: input.thumbnail,
+    categoryId: input.categoryId,
+    categoryIds: [...input.categoryIds],
+    category: input.category,
+    tags: [...input.tags],
+    statusIds: [...input.statusIds],
+    reason: input.reason,
+    cookTime: input.cookTime,
+    calories: input.calories,
+    popularity: input.popularity,
+    servings: input.servings,
+    difficulty: input.difficulty,
+    ingredients: input.ingredients.map(item => ({ ...item })),
+    steps: input.steps.map(step => ({ text: step.text, imageKey: step.image })),
+    sortOrder: input.sortOrder,
   }
 }
 

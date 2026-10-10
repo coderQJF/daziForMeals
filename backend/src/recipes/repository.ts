@@ -1,6 +1,6 @@
 import { categorySeeds, getSeedTaggings, recipeSeeds, statusSeeds, type SeedRecipe } from './seed.js'
 import { planMealSeeds, planReminders, planSummary, takeoutShops } from '../experience/seed.js'
-import type { BootstrapPayload, Category, PlanPayload, Recipe, RecipeQuery, RecipeRepository, UserState, UserStateUpdate, WechatAccount, WechatNotificationSubscription } from './types.js'
+import type { BootstrapPayload, Category, PlanPayload, Recipe, RecipeInput, RecipeQuery, RecipeRepository, UserState, UserStateUpdate, WechatAccount, WechatNotificationSubscription } from './types.js'
 
 function maskPhoneNumber(phoneNumber: string | undefined): string {
   if (!phoneNumber) return ''
@@ -23,6 +23,7 @@ export function normalizeNotificationSubscriptions(account: WechatAccount | unde
 }
 
 export function createAssetUrl(baseUrl: string, path: string): string {
+  if (/^https?:\/\//i.test(path)) return path
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 
@@ -109,6 +110,7 @@ export function mapSeedRecipe(seed: SeedRecipe, assetBaseUrl: string): Recipe {
     difficulty: seed.difficulty,
     ingredients: seed.ingredients.map(item => ({ ...item })),
     steps: seed.steps.map(step => ({ text: step.text, image: createAssetUrl(assetBaseUrl, step.imageKey) })),
+    sortOrder: seed.sortOrder,
   }
 }
 
@@ -170,6 +172,35 @@ export function createMemoryRecipeRepository(assetBaseUrl: string): RecipeReposi
     async findById(id) {
       const recipe = recipes.find(item => item.id === id)
       return recipe ? { ...recipe } : undefined
+    },
+    async upsertRecipe(input: RecipeInput) {
+      const id = input.id ?? Math.max(1000, ...recipes.map(recipe => recipe.id)) + 1
+      const recipe: Recipe = {
+        ...input,
+        id,
+        categoryIds: [...input.categoryIds],
+        tags: [...input.tags],
+        tagIds: [...new Set([...input.statusIds, ...input.tags])],
+        taggings: [
+          ...input.statusIds.map(tagId => ({ tagId, weight: 100, source: 'manual' as const, confidence: 1 })),
+          ...input.tags.map(tagId => ({ tagId, weight: 100, source: 'manual' as const, confidence: 1 })),
+        ],
+        statusIds: [...input.statusIds],
+        ingredients: input.ingredients.map(item => ({ ...item })),
+        steps: input.steps.map(item => ({ ...item })),
+      }
+      const index = recipes.findIndex(item => item.id === id)
+      if (index >= 0) recipes[index] = recipe
+      else recipes.push(recipe)
+      recipeIds.add(id)
+      return structuredClone(recipe)
+    },
+    async deleteRecipe(id: number) {
+      const index = recipes.findIndex(item => item.id === id)
+      if (index < 0) return false
+      recipes.splice(index, 1)
+      recipeIds.delete(id)
+      return true
     },
     async getUserState(clientId) {
       return structuredClone(getState(clientId))
