@@ -3,7 +3,7 @@ import pg from 'pg'
 import type { PoolClient } from 'pg'
 import type { Recipe, RecipeRepository } from '../recipes/types.js'
 import { DEFAULT_CATEGORIES, defaultCategoryRecipeIds } from './repository.js'
-import { resolveMealSlot } from './schedule.js'
+import { ensureMealBeforeStart, resolveMealSlot } from './schedule.js'
 import {
   InvalidInviteError,
   MealAccessDeniedError,
@@ -454,6 +454,7 @@ export async function createPostgresMealRepository(
       const meal = await findMeal(mealId, client, true)
       await ensureMember(client, mealId, userId)
       ensureActive(meal)
+      ensureMealBeforeStart(meal.meal_at, meal.meal_type)
       await mutate(client)
       await client.query('UPDATE fandazi_meal SET updated_at = NOW() WHERE meal_id = $1', [mealId])
       await client.query('COMMIT')
@@ -719,10 +720,36 @@ export async function createPostgresMealRepository(
         await ensureMember(client, mealId, userId)
         if (meal.status === 'closed') throw new MealValidationError('饭局已关闭')
         if (meal.status === 'active') {
+          ensureMealBeforeStart(meal.meal_at, meal.meal_type)
           await client.query(
             `UPDATE fandazi_meal
              SET status = 'confirmed', updated_at = NOW()
              WHERE meal_id = $1`,
+            [mealId],
+          )
+        }
+        await selectCurrentMeal(client, userId, mealId)
+        await client.query('COMMIT')
+      } catch (error) {
+        await client.query('ROLLBACK')
+        throw error
+      } finally {
+        client.release()
+      }
+      return aggregate(mealId, userId)
+    },
+
+    async reopenMeal(mealId, userId) {
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+        const meal = await findMeal(mealId, client, true)
+        await ensureMember(client, mealId, userId)
+        if (meal.status === 'closed') throw new MealValidationError('饭局已关闭')
+        ensureMealBeforeStart(meal.meal_at, meal.meal_type)
+        if (meal.status === 'confirmed') {
+          await client.query(
+            `UPDATE fandazi_meal SET status = 'active', updated_at = NOW() WHERE meal_id = $1`,
             [mealId],
           )
         }

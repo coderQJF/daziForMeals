@@ -1060,6 +1060,96 @@ test('confirmed meals reject joins and all dish or wish writes', async () => {
   }
 })
 
+test('members can reopen, revise and reconfirm the same meal before it starts', async () => {
+  const app = mealApp()
+  try {
+    const ownerToken = await loginMealUser(app, 'revision-owner', 'revision-owner-device')
+    const ownerHeaders = { authorization: `Bearer ${ownerToken}` }
+    const memberToken = await loginMealUser(app, 'revision-member', 'revision-member-device')
+    const memberHeaders = { authorization: `Bearer ${memberToken}` }
+    const meal = await createMealFor(app, ownerToken, chinaMealAt(1))
+    const joined = await app.inject({ method: 'POST', url: `/api/v1/meals/${meal.id}/join`, headers: memberHeaders, payload: { inviteCode: meal.inviteCode } })
+    assert.equal(joined.statusCode, 200, joined.body)
+    const wished = await app.inject({ method: 'PUT', url: `/api/v1/meals/${meal.id}/wishes/1001`, headers: memberHeaders })
+    assert.equal(wished.statusCode, 200, wished.body)
+    const confirmed = await app.inject({ method: 'PUT', url: `/api/v1/meals/${meal.id}/confirm`, headers: ownerHeaders })
+    assert.equal(confirmed.statusCode, 200, confirmed.body)
+
+    const outsiderToken = await loginMealUser(app, 'revision-outsider', 'revision-outsider-device')
+    const unauthorized = await app.inject({ method: 'PUT', url: `/api/v1/meals/${meal.id}/reopen` })
+    assert.equal(unauthorized.statusCode, 401, unauthorized.body)
+    const forbidden = await app.inject({ method: 'PUT', url: `/api/v1/meals/${meal.id}/reopen`, headers: { authorization: `Bearer ${outsiderToken}` } })
+    assert.equal(forbidden.statusCode, 403, forbidden.body)
+
+    const reopened = await app.inject({ method: 'PUT', url: `/api/v1/meals/${meal.id}/reopen`, headers: memberHeaders })
+    assert.equal(reopened.statusCode, 200, reopened.body)
+    assert.equal(reopened.json().data.id, meal.id)
+    assert.equal(reopened.json().data.status, 'active')
+    assert.equal(reopened.json().data.inviteCode, meal.inviteCode)
+    assert.deepEqual(reopened.json().data.members, confirmed.json().data.members)
+    assert.deepEqual(reopened.json().data.dishes, confirmed.json().data.dishes)
+    const repeated = await app.inject({ method: 'PUT', url: `/api/v1/meals/${meal.id}/reopen`, headers: memberHeaders })
+    assert.equal(repeated.statusCode, 200, repeated.body)
+    assert.equal(repeated.json().data.id, meal.id)
+    const changed = await app.inject({ method: 'POST', url: `/api/v1/meals/${meal.id}/dishes/1001/quantity`, headers: memberHeaders, payload: { delta: 1 } })
+    assert.equal(changed.statusCode, 200, changed.body)
+    assert.equal(changed.json().data.dishes[0].quantity, 2)
+    const reconfirmed = await app.inject({ method: 'PUT', url: `/api/v1/meals/${meal.id}/confirm`, headers: memberHeaders })
+    assert.equal(reconfirmed.statusCode, 200, reconfirmed.body)
+    assert.equal(reconfirmed.json().data.id, meal.id)
+    assert.equal(reconfirmed.json().data.status, 'confirmed')
+    assert.equal(reconfirmed.json().data.dishes[0].quantity, 2)
+    const lockedAgain = await app.inject({ method: 'POST', url: `/api/v1/meals/${meal.id}/dishes/1001/quantity`, headers: ownerHeaders, payload: { delta: -1 } })
+    assert.equal(lockedAgain.statusCode, 400, lockedAgain.body)
+  } finally {
+    await app.close()
+  }
+})
+
+test('meal editing ends exactly at Shanghai noon or 19:00 regardless of a custom meal time', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-10T03:59:59.999Z') })
+  const app = mealApp()
+  try {
+    const token = await loginMealUser(app, 'deadline-owner', 'deadline-owner-device')
+    const headers = { authorization: `Bearer ${token}` }
+    const lunch = await createMealFor(app, token, '2026-10-10T05:00:00Z', '午餐', 'lunch')
+    const dinner = await createMealFor(app, token, '2026-10-10T12:00:00Z', '晚餐', 'dinner')
+    const draftToken = await loginMealUser(app, 'deadline-draft', 'deadline-draft-device')
+    const draftHeaders = { authorization: `Bearer ${draftToken}` }
+    const draftMeal = await createMealFor(app, draftToken, '2026-10-10T04:00:00Z', '待确认午餐', 'lunch')
+    for (const meal of [lunch, dinner]) {
+      const confirmed = await app.inject({ method: 'PUT', url: `/api/v1/meals/${meal.id}/confirm`, headers })
+      assert.equal(confirmed.statusCode, 200, confirmed.body)
+    }
+    const before = await app.inject({ method: 'PUT', url: `/api/v1/meals/${lunch.id}/reopen`, headers })
+    assert.equal(before.statusCode, 200, before.body)
+    const reconfirm = await app.inject({ method: 'PUT', url: `/api/v1/meals/${lunch.id}/confirm`, headers })
+    assert.equal(reconfirm.statusCode, 200, reconfirm.body)
+
+    t.mock.timers.setTime(Date.parse('2026-10-10T04:00:00Z'))
+    const atLunch = await app.inject({ method: 'PUT', url: `/api/v1/meals/${lunch.id}/reopen`, headers })
+    assert.equal(atLunch.statusCode, 400, atLunch.body)
+    assert.match(atLunch.json().error.message, /已到开饭时间/)
+    for (const request of [
+      { method: 'PUT' as const, url: `/api/v1/meals/${draftMeal.id}/wishes/1001` },
+      { method: 'PUT' as const, url: `/api/v1/meals/${draftMeal.id}/confirm` },
+    ]) {
+      const blocked = await app.inject({ ...request, headers: draftHeaders })
+      assert.equal(blocked.statusCode, 400, blocked.body)
+    }
+    t.mock.timers.setTime(Date.parse('2026-10-10T10:59:59.999Z'))
+    const beforeDinner = await app.inject({ method: 'PUT', url: `/api/v1/meals/${dinner.id}/reopen`, headers })
+    assert.equal(beforeDinner.statusCode, 200, beforeDinner.body)
+    t.mock.timers.setTime(Date.parse('2026-10-10T11:00:00Z'))
+    const atDinner = await app.inject({ method: 'PUT', url: `/api/v1/meals/${dinner.id}/reopen`, headers })
+    assert.equal(atDinner.statusCode, 400, atDinner.body)
+    const lateWrite = await app.inject({ method: 'POST', url: `/api/v1/meals/${dinner.id}/dishes/1001/quantity`, headers, payload: { delta: 1 } })
+    assert.equal(lateWrite.statusCode, 400, lateWrite.body)
+  } finally {
+    await app.close()
+  }
+})
+
 test('dish quantity deltas increment and decrement without lost updates', async () => {
   const app = mealApp()
 

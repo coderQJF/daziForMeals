@@ -13,7 +13,7 @@ import {
   type MealRepository,
   type MealType,
 } from './types.js'
-import { chinaDateKey, isMealInSlot, resolveMealSlot } from './schedule.js'
+import { chinaDateKey, ensureMealBeforeStart, isMealInSlot, resolveMealSlot } from './schedule.js'
 
 interface StoredMember {
   userId: string
@@ -117,6 +117,11 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
 
   function ensureActive(meal: StoredMeal): void {
     if (meal.status !== 'active') throw new MealValidationError('饭局已确认，不能再修改')
+  }
+
+  function ensureEditable(meal: StoredMeal): void {
+    ensureActive(meal)
+    ensureMealBeforeStart(meal.mealAt, meal.mealType)
   }
 
   function inviteIsExpired(meal: StoredMeal): boolean {
@@ -301,7 +306,7 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
     async setWish(mealId, userId, recipeId) {
       const meal = storedMeal(mealId)
       ensureMember(meal, userId)
-      ensureActive(meal)
+      ensureEditable(meal)
       await ensureRecipe(recipeId)
       const now = new Date().toISOString()
       if (!meal.dishes.has(recipeId)) {
@@ -317,7 +322,7 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
     async removeWish(mealId, userId, recipeId) {
       const meal = storedMeal(mealId)
       ensureMember(meal, userId)
-      ensureActive(meal)
+      ensureEditable(meal)
       const wishes = meal.wishes.get(recipeId)
       wishes?.delete(userId)
       if (wishes && wishes.size === 0) {
@@ -331,7 +336,7 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
     async setDish(mealId, userId, recipeId, quantity) {
       const meal = storedMeal(mealId)
       ensureMember(meal, userId)
-      ensureActive(meal)
+      ensureEditable(meal)
       await ensureRecipe(recipeId)
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
         throw new MealValidationError('菜品数量需在 1 到 20 之间')
@@ -351,7 +356,7 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
     async removeDish(mealId, userId, recipeId) {
       const meal = storedMeal(mealId)
       ensureMember(meal, userId)
-      ensureActive(meal)
+      ensureEditable(meal)
       meal.dishes.delete(recipeId)
       meal.wishes.delete(recipeId)
       meal.updatedAt = new Date().toISOString()
@@ -361,7 +366,7 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
     async addDishQuantity(mealId, userId, recipeId, delta) {
       const meal = storedMeal(mealId)
       ensureMember(meal, userId)
-      ensureActive(meal)
+      ensureEditable(meal)
       if (delta !== 1 && delta !== -1) throw new MealValidationError('菜品数量变化值无效')
       await ensureRecipe(recipeId)
       const existing = meal.dishes.get(recipeId)
@@ -390,7 +395,21 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
       ensureMember(meal, userId)
       if (meal.status === 'closed') throw new MealValidationError('饭局已关闭')
       if (meal.status === 'active') {
+        ensureMealBeforeStart(meal.mealAt, meal.mealType)
         meal.status = 'confirmed'
+        meal.updatedAt = new Date().toISOString()
+      }
+      currentMealByUser.set(userId, meal.id)
+      return aggregate(meal, userId)
+    },
+
+    async reopenMeal(mealId, userId) {
+      const meal = storedMeal(mealId)
+      ensureMember(meal, userId)
+      if (meal.status === 'closed') throw new MealValidationError('饭局已关闭')
+      ensureMealBeforeStart(meal.mealAt, meal.mealType)
+      if (meal.status === 'confirmed') {
+        meal.status = 'active'
         meal.updatedAt = new Date().toISOString()
       }
       currentMealByUser.set(userId, meal.id)

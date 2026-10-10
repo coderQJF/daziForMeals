@@ -658,6 +658,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     return { data: confirmed }
   })
 
+  app.put('/api/v1/meals/:id/reopen', async (request) => {
+    const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
+    const { id } = request.params as { id: string }
+    return { data: await mealRepository.reopenMeal(id, userId) }
+  })
+
   app.put('/api/v1/meals/:id/wishes/:recipeId', async (request) => {
     const userId = resolveAuthenticatedClientId(request.headers, sessionSecret)
     const { id, recipeId } = request.params as { id: string, recipeId: string }

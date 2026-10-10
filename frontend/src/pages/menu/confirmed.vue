@@ -3,6 +3,7 @@ import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import { useMealClock } from '@/composables/useMealClock'
 import { dishImageFor } from '@/config/dish-images'
 import { mealSharePath } from '@/config/meal-share'
 import { useMealStore } from '@/stores/meal'
@@ -16,7 +17,10 @@ const {
   selectedDishes,
   mealLoading: pageLoading,
   mealError: errorMessage,
+  canReopen,
+  beforeMealStart,
 } = storeToRefs(mealStore)
+useMealClock()
 const avatarErrors = ref<string[]>([])
 const redirecting = ref(false)
 const requestedMealId = ref('')
@@ -36,6 +40,17 @@ function goBack() {
 
 function returnToSelection() {
   uni.switchTab({ url: '/pages/index/index' })
+}
+
+async function modifyMenu() {
+  if (pageLoading.value || redirecting.value) return
+  const reopened = await mealStore.reopenMeal()
+  if (!reopened) {
+    uni.showToast({ title: errorMessage.value || '菜单暂未恢复编辑，请重试', icon: 'none' })
+    return
+  }
+  redirecting.value = true
+  uni.redirectTo({ url: `/pages/menu/menu?mealId=${encodeURIComponent(meal.value!.id)}` })
 }
 
 function memberInitial(nickname: string) {
@@ -143,7 +158,9 @@ onShareAppMessage(() => ({
         <image class="share-button__icon" src="/static/icons/share-white.svg" mode="aspectFit" />
         <text>分享给饭搭子</text>
       </button>
-      <button class="restart-button" @click="returnToSelection">返回选菜页</button>
+      <button v-if="canReopen" class="modify-button" :loading="pageLoading" :disabled="pageLoading" @click="modifyMenu">{{ pageLoading ? '正在恢复编辑…' : '修改本餐菜单' }}</button>
+      <text v-if="meal?.isMember" class="edit-hint">{{ beforeMealStart ? `开饭前可修改，修改后需重新确认（${meal?.mealType === 'lunch' ? '12:00' : '19:00'} 开饭）` : '已到开饭时间，本餐菜单已锁定' }}</text>
+      <button class="restart-button" @click="returnToSelection">返回首页</button>
     </template>
 
     <view v-else class="result-state result-state--empty">
@@ -436,6 +453,24 @@ onShareAppMessage(() => ({
   color: #918982;
   font-size: 25rpx;
 }
+
+.modify-button {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 84rpx;
+  margin-top: 20rpx;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid $color-primary;
+  border-radius: 42rpx;
+  background: $color-card;
+  color: $color-primary-deep;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.edit-hint { position: relative; display: block; margin-top: 16rpx; color: $color-text-secondary; font-size: 24rpx; line-height: 1.5; text-align: center; }
 
 .result-state {
   display: flex;

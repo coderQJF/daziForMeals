@@ -3,6 +3,7 @@ import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import { useMealClock } from '@/composables/useMealClock'
 import { dishImageFor, mealDishKindFor, type MealDishKind } from '@/config/dish-images'
 import { mealSharePath } from '@/config/meal-share'
 import { authApi } from '@/services/auth'
@@ -11,6 +12,7 @@ import { useMealStore } from '@/stores/meal'
 import type { MealDish } from '@/types/meal'
 
 const mealStore = useMealStore()
+useMealClock()
 const {
   meal,
   members,
@@ -21,6 +23,8 @@ const {
   mealLoading: pageLoading,
   mealError: errorMessage,
   pendingRecipeId,
+  canEdit,
+  beforeMealStart,
 } = storeToRefs(mealStore)
 const avatarErrors = ref<string[]>([])
 const confirming = ref(false)
@@ -161,6 +165,11 @@ function showShareHint() {
 
 async function confirmMenu() {
   if (confirming.value) return
+  mealStore.refreshMealClock()
+  if (!canEdit.value) {
+    uni.showToast({ title: beforeMealStart.value ? '菜单状态已变化，请重新加载' : '已到开饭时间，本餐菜单不能再修改', icon: 'none' })
+    return
+  }
   if (!selectedDishes.value.length) {
     uni.showToast({ title: '先选几道想吃的菜吧', icon: 'none' })
     return
@@ -319,7 +328,7 @@ onShareAppMessage(() => ({
           <text class="dish-card__name">{{ item.recipe.name }}</text>
           <text class="dish-card__tag">{{ wishLabel(item) }}</text>
         </view>
-        <view class="stepper">
+        <view v-if="canEdit" class="stepper">
           <button
             class="stepper__button stepper__button--minus"
             :aria-label="`减少一份${item.recipe.name}`"
@@ -336,7 +345,7 @@ onShareAppMessage(() => ({
         </view>
       </view>
 
-      <button class="add-more-card" @click="continueSelecting">
+      <button v-if="canEdit" class="add-more-card" @click="continueSelecting">
         <text class="add-more-card__icon">＋</text>
         <text>帮我加一道</text>
       </button>
@@ -352,7 +361,7 @@ onShareAppMessage(() => ({
     <view v-if="selectedDishes.length" class="menu-footer">
       <view class="menu-footer__inner">
         <button class="footer-button footer-button--secondary" @click="continueSelecting">继续加菜</button>
-        <button class="footer-button footer-button--primary" :loading="confirming" :disabled="confirming" @click="confirmMenu">{{ confirming ? '正在确认…' : '就吃这些' }}</button>
+        <button class="footer-button footer-button--primary" :loading="confirming" :disabled="confirming || !canEdit || pendingRecipeId !== null" @click="confirmMenu">{{ !beforeMealStart ? '已到开饭时间' : confirming ? '正在确认…' : '就吃这些' }}</button>
       </view>
     </view>
   </view>

@@ -27,6 +27,7 @@ pnpm dev:backend
 - `GET /api/v1/meals/:id?invite=...`
 - `POST /api/v1/meals/:id/join`
 - `PUT /api/v1/meals/:id/confirm`
+- `PUT /api/v1/meals/:id/reopen`：饭局成员在开饭前恢复本餐编辑，保留菜品、想吃记录和成员，修改后需重新确认。午餐 12:00、晚餐 19:00（北京时间）起不再允许恢复编辑、修改菜品或确认待定菜单。
 - `PUT|DELETE /api/v1/meals/:id/dishes/:recipeId`
 - `POST /api/v1/meals/:id/dishes/:recipeId/quantity`
 - `PUT|DELETE /api/v1/meals/:id/wishes/:recipeId`

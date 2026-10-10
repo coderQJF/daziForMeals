@@ -78,6 +78,7 @@ export interface MealRepository {
   removeDish(mealId: string, userId: string, recipeId: number): Promise<MealAggregate>
   addDishQuantity(mealId: string, userId: string, recipeId: number, delta: 1 | -1): Promise<MealAggregate>
   confirmMeal(mealId: string, userId: string): Promise<MealAggregate>
+  reopenMeal(mealId: string, userId: string): Promise<MealAggregate>
   listCategories(includeDisabled?: boolean): Promise<MealCategory[]>
   upsertCategory(input: MealCategoryInput): Promise<MealCategory>
   deleteCategory(id: string): Promise<boolean>

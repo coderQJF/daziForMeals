@@ -1,4 +1,4 @@
-import type { MealType } from './types.js'
+import { MealValidationError, type MealType } from './types.js'
 
 const CHINA_OFFSET_MS = 8 * 60 * 60 * 1000
 
@@ -42,4 +42,15 @@ export function mealTitle(mealAt: Date, mealType: MealType): string {
 
 export function isMealInSlot(mealAt: string | Date, mealType: MealType, slot: MealSlot): boolean {
   return mealType === slot.mealType && chinaDateKey(mealAt) === chinaDateKey(slot.mealAt)
+}
+
+export function mealEditingDeadline(mealAt: string | Date, mealType: MealType): Date {
+  const china = new Date((mealAt instanceof Date ? mealAt.getTime() : Date.parse(mealAt)) + CHINA_OFFSET_MS)
+  return new Date(Date.UTC(china.getUTCFullYear(), china.getUTCMonth(), china.getUTCDate(), mealType === 'lunch' ? 4 : 11))
+}
+
+export function ensureMealBeforeStart(mealAt: string | Date, mealType: MealType, now = Date.now()): void {
+  if (now >= mealEditingDeadline(mealAt, mealType).getTime()) {
+    throw new MealValidationError('已到开饭时间，本餐菜单不能再修改')
+  }
 }

@@ -35,4 +35,7 @@ export const mealApi = {
   confirm(mealId: string) {
     return apiRequest<Meal>('PUT', `/meals/${encodeURIComponent(mealId)}/confirm`)
   },
+  reopen(mealId: string) {
+    return apiRequest<Meal>('PUT', `/meals/${encodeURIComponent(mealId)}/reopen`)
+  },
 }

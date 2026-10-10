@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { mealEditingDeadline } from '@/config/meal-time'
 import { mealApi } from '@/services/meals'
 import { ApiError, hasAuthToken } from '@/services/http'
 import { recipeApi } from '@/services/recipes'
@@ -26,6 +27,7 @@ export const useMealStore = defineStore('meal', () => {
   const mealError = ref('')
   const catalogError = ref('')
   const pendingRecipeId = ref<number | null>(null)
+  const mealClock = ref(Date.now())
   let mealLoadRequestId = 0
   let loadingMealId: string | null = null
 
@@ -34,12 +36,19 @@ export const useMealStore = defineStore('meal', () => {
   const dishCount = computed(() => selectedDishes.value.length)
   const itemCount = computed(() => selectedDishes.value.reduce((total, dish) => total + dish.quantity, 0))
   const memberCount = computed(() => members.value.length)
-  const canEdit = computed(() => Boolean(loggedIn.value && meal.value?.isMember && meal.value.status === 'active'))
+  const beforeMealStart = computed(() => Boolean(meal.value && mealClock.value < mealEditingDeadline(meal.value)))
+  const canEdit = computed(() => Boolean(loggedIn.value && meal.value?.isMember && meal.value.status === 'active' && beforeMealStart.value))
+  const canReopen = computed(() => Boolean(loggedIn.value && meal.value?.isMember && meal.value.status === 'confirmed' && beforeMealStart.value))
   const currentUserId = computed(() => meal.value?.currentUserId ?? null)
 
   function refreshAuth() {
+    refreshMealClock()
     loggedIn.value = hasAuthToken()
     return loggedIn.value
+  }
+
+  function refreshMealClock() {
+    mealClock.value = Date.now()
   }
 
   function setInvitation(next: MealInvitation | null) {
@@ -177,6 +186,7 @@ export const useMealStore = defineStore('meal', () => {
   }
 
   async function mutate(recipeId: number, action: () => Promise<Meal>) {
+    refreshMealClock()
     if (!meal.value || !canEdit.value || pendingRecipeId.value !== null) return false
     pendingRecipeId.value = recipeId
     mealError.value = ''
@@ -244,7 +254,8 @@ export const useMealStore = defineStore('meal', () => {
   }
 
   async function confirmMeal() {
-    if (!meal.value || !canEdit.value || mealLoading.value) return false
+    refreshMealClock()
+    if (!meal.value || !canEdit.value || mealLoading.value || pendingRecipeId.value !== null) return false
     mealLoading.value = true
     mealError.value = ''
     try {
@@ -252,6 +263,26 @@ export const useMealStore = defineStore('meal', () => {
       return true
     } catch (error) {
       mealError.value = error instanceof Error ? error.message : '菜单确认失败'
+      return false
+    } finally {
+      mealLoading.value = false
+    }
+  }
+
+  async function reopenMeal() {
+    refreshMealClock()
+    if (!meal.value || mealLoading.value || pendingRecipeId.value !== null) return false
+    if (!canReopen.value) {
+      mealError.value = beforeMealStart.value ? '当前菜单暂不可修改' : '已到开饭时间，本餐菜单不能再修改'
+      return false
+    }
+    mealLoading.value = true
+    mealError.value = ''
+    try {
+      meal.value = await mealApi.reopen(meal.value.id)
+      return true
+    } catch (error) {
+      mealError.value = error instanceof Error ? error.message : '菜单暂未恢复编辑，请重试'
       return false
     } finally {
       mealLoading.value = false
@@ -290,8 +321,11 @@ export const useMealStore = defineStore('meal', () => {
     itemCount,
     memberCount,
     canEdit,
+    canReopen,
+    beforeMealStart,
     currentUserId,
     refreshAuth,
+    refreshMealClock,
     setInvitation,
     useInvitationOptions,
     loadCatalog,
@@ -306,6 +340,7 @@ export const useMealStore = defineStore('meal', () => {
     removeRecipe,
     toggleWish,
     confirmMeal,
+    reopenMeal,
     startNewMeal,
   }
 })

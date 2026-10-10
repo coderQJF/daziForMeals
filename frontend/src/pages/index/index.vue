@@ -3,6 +3,7 @@ import { onLoad, onPullDownRefresh, onShareAppMessage, onShow } from '@dcloudio/
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import { useMealClock } from '@/composables/useMealClock'
 import { dishImageFor, dishTagFor, mealDishKindFor, type MealDishKind } from '@/config/dish-images'
 import { mealSharePath } from '@/config/meal-share'
 import { useMealStore } from '@/stores/meal'
@@ -10,6 +11,7 @@ import { useRecipeStore } from '@/stores/recipe'
 import type { MealWisher } from '@/types/meal'
 
 const mealStore = useMealStore()
+useMealClock()
 const recipeStore = useRecipeStore()
 const {
   meal, catalog: recipes, categories, loggedIn, mealLoading, catalogLoading,
@@ -169,7 +171,12 @@ async function withEditableMeal(action: () => Promise<boolean>) {
     return
   }
   if (mealConfirmed.value) {
-    uni.showToast({ title: '本餐菜单已经确定', icon: 'none' })
+    uni.showToast({ title: '请在已定菜单中点击修改本餐菜单', icon: 'none' })
+    return
+  }
+  mealStore.refreshMealClock()
+  if (!mealStore.beforeMealStart) {
+    uni.showToast({ title: '已到开饭时间，请返回首页选择下一餐', icon: 'none' })
     return
   }
   if (!canEdit.value) {
@@ -279,19 +286,20 @@ onShareAppMessage(() => ({
               <view class="dish-card__body">
                 <view class="dish-card__heading">
                   <text class="dish-card__name">{{ recipe.name }}</text>
-                  <button v-if="wishCountFor(recipe.id)" class="wish-badge" :class="{ 'wish-badge--mine': mealStore.hasWished(recipe.id) }" @click="toggleWish(recipe.id)">
+                  <button v-if="wishCountFor(recipe.id)" :disabled="mealConfirmed" class="wish-badge" :class="{ 'wish-badge--mine': mealStore.hasWished(recipe.id) }" @click="toggleWish(recipe.id)">
                     <view class="wish-faces"><view v-for="wisher in wishersFor(recipe.id).slice(0, 2)" :key="wisher.userId" class="wish-face"><image v-if="canShowAvatar(wisher.userId, wisher.avatar)" :src="wisher.avatar" mode="aspectFill" @error="markAvatarError(wisher.userId)" /><text v-else>{{ memberInitial(wisher.nickname) }}</text></view></view>
                     <text>{{ wishCountFor(recipe.id) }} 人想吃</text>
                   </button>
                 </view>
                 <view class="dish-card__footer">
                   <text class="dish-card__tag">{{ dishTagFor(recipe) }}</text>
-                  <view v-if="mealStore.quantityFor(recipe.id)" class="stepper">
+                  <text v-if="mealConfirmed && mealStore.quantityFor(recipe.id)" class="dish-card__selected">已选 {{ mealStore.quantityFor(recipe.id) }} 份</text>
+                  <view v-else-if="!mealConfirmed && mealStore.quantityFor(recipe.id)" class="stepper">
                     <button :disabled="pendingRecipeId === recipe.id" class="stepper__button stepper__button--minus" @click="decrementRecipe(recipe.id)">−</button>
                     <text>{{ mealStore.quantityFor(recipe.id) }}</text>
                     <button :disabled="pendingRecipeId === recipe.id" class="stepper__button stepper__button--plus" @click="incrementRecipe(recipe.id)">＋</button>
                   </view>
-                  <button v-else :disabled="pendingRecipeId === recipe.id" class="add-button" @click="addRecipe(recipe.id)">＋</button>
+                  <button v-else-if="!mealConfirmed" :disabled="pendingRecipeId === recipe.id" class="add-button" @click="addRecipe(recipe.id)">＋</button>
                 </view>
               </view>
             </view>
@@ -372,6 +380,7 @@ onShareAppMessage(() => ({
 .dish-card__name { display: block; min-width: 0; overflow: hidden; flex: 1; color: $color-text; font-size: 29rpx; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .dish-card__footer { display: flex; min-height: 68rpx; margin-top: auto; align-items: center; justify-content: space-between; gap: 8rpx; }
 .dish-card__tag { min-width: 0; overflow: hidden; padding: 7rpx 10rpx; border-radius: 12rpx; background: #fff3e3; color: #b56b21; font-size: 24rpx; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.dish-card__selected { flex: 0 0 auto; color: $color-primary-deep; font-size: 24rpx; font-weight: 700; }
 .add-button, .stepper__button { display: flex; width: 68rpx; height: 68rpx; padding: 0; flex: 0 0 68rpx; align-items: center; justify-content: center; border-radius: 50%; font-size: 38rpx; line-height: 1; }
 .add-button, .stepper__button--plus { background: linear-gradient(135deg, #ffab2e, $color-primary-deep); color: #fff; }
 .stepper { display: flex; flex: 0 0 auto; align-items: center; }
