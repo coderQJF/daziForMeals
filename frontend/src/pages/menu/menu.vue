@@ -334,12 +334,6 @@ onShareAppMessage(() => ({
             @click="mealStore.incrementRecipe(item.recipe.id)"
           >＋</button>
         </view>
-        <button
-          class="remove-button"
-          :aria-label="`从菜单移除${item.recipe.name}`"
-          :disabled="pendingRecipeId === item.recipe.id"
-          @click="mealStore.removeRecipe(item.recipe.id)"
-        >×</button>
       </view>
 
       <button class="add-more-card" @click="continueSelecting">
@@ -746,21 +740,6 @@ onShareAppMessage(() => ({
 .stepper__button--plus { color: #fff; background: linear-gradient(135deg, #ff9f22, #ff7300); }
 .stepper__value { width: 45rpx; color: #211b17; font-size: 29rpx; font-weight: 700; text-align: center; }
 
-.remove-button {
-  display: flex;
-  width: 64rpx;
-  height: 64rpx;
-  margin-left: 5rpx;
-  padding: 0;
-  flex: 0 0 64rpx;
-  align-items: center;
-  justify-content: center;
-  color: #a29c97;
-  font-size: 47rpx;
-  font-weight: 300;
-  line-height: 1;
-}
-
 .add-more-card {
   display: flex;
   width: 100%;
@@ -812,17 +791,21 @@ onShareAppMessage(() => ({
 .state-card__action { margin-top: 26rpx; color: $color-primary-deep; font-size: 26rpx; font-weight: 700; }
 
 .state-card__primary {
+  display: flex;
   min-width: 236rpx;
   height: 76rpx;
   margin-top: 28rpx;
   padding: 0 36rpx;
+  align-items: center;
+  justify-content: center;
   color: #fff;
   border-radius: 38rpx;
   background: linear-gradient(135deg, #ffa529, #ff7600);
   box-shadow: 0 10rpx 24rpx rgba(255, 118, 0, 0.2);
   font-size: 27rpx;
   font-weight: 750;
-  line-height: 76rpx;
+  line-height: 1.2;
+  box-sizing: border-box;
 }
 
 .dish-section--loading { padding-top: 4rpx; }

@@ -140,7 +140,7 @@ onShareAppMessage(() => ({
       </view>
 
       <button class="share-button" open-type="share">
-        <image class="share-button__icon" src="/static/images/plan-detail/share.png" mode="aspectFit" />
+        <image class="share-button__icon" src="/static/icons/share-white.svg" mode="aspectFit" />
         <text>分享给饭搭子</text>
       </button>
       <button class="restart-button" @click="returnToSelection">返回选菜页</button>
@@ -420,9 +420,10 @@ onShareAppMessage(() => ({
 }
 
 .share-button__icon {
-  width: 48rpx;
-  height: 48rpx;
-  margin-right: 11rpx;
+  width: 40rpx;
+  height: 40rpx;
+  flex: 0 0 40rpx;
+  margin-right: 14rpx;
 }
 
 .restart-button {

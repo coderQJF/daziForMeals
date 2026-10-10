@@ -381,11 +381,11 @@ onShareAppMessage(() => ({
 
 .state, .empty { display: flex; min-height: 300rpx; align-items: center; justify-content: center; border-radius: 28rpx; background: rgba(255, 255, 255, .84); color: $color-text-secondary; font-size: 26rpx; }
 .state--error { color: #c96531; }
-.empty { padding: 50rpx 30rpx; flex-direction: column; box-sizing: border-box; }
-.empty image { width: 180rpx; height: 180rpx; }
-.empty__title { margin-top: 8rpx; color: $color-text; font-size: 31rpx; font-weight: 800; }
-.empty__copy { margin-top: 10rpx; color: $color-text-secondary; font-size: 24rpx; text-align: center; }
-.empty button { min-width: 220rpx; height: 72rpx; margin-top: 26rpx; border-radius: 36rpx; background: $color-primary; color: #fff; font-size: 26rpx; font-weight: 700; }
+.empty { width: 100%; min-height: 0; padding: 32rpx 24rpx; flex-direction: column; text-align: center; box-sizing: border-box; }
+.empty image { width: 144rpx; height: 144rpx; flex: 0 0 144rpx; }
+.empty__title { margin-top: 16rpx; color: $color-text; font-size: 30rpx; font-weight: 800; line-height: 1.4; }
+.empty__copy { width: 100%; margin-top: 8rpx; color: $color-text-secondary; font-size: 24rpx; line-height: 1.5; text-align: center; overflow-wrap: break-word; }
+.empty button { display: flex; min-width: 220rpx; max-width: 100%; height: 72rpx; margin-top: 24rpx; padding: 0 28rpx; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 36rpx; background: $color-primary; color: #fff; font-size: 26rpx; font-weight: 700; line-height: 1.2; box-sizing: border-box; }
 
 .dock { position: fixed; z-index: 999; right: 24rpx; bottom: calc(env(safe-area-inset-bottom) + 20rpx); left: 24rpx; display: flex; min-height: 104rpx; padding: 12rpx 14rpx 12rpx 26rpx; align-items: center; justify-content: space-between; border: 1rpx solid rgba(133, 85, 47, .08); border-radius: 30rpx; background: rgba(255, 255, 255, .98); box-shadow: 0 12rpx 36rpx rgba(79, 48, 25, .13); box-sizing: border-box; }
 .dock__summary { display: flex; min-width: 0; align-items: baseline; color: $color-text; font-size: 27rpx; font-weight: 750; }
