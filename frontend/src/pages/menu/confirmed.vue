@@ -18,7 +18,6 @@ const {
   mealError: errorMessage,
 } = storeToRefs(mealStore)
 const avatarErrors = ref<string[]>([])
-const startingOver = ref(false)
 const redirecting = ref(false)
 const requestedMealId = ref('')
 
@@ -37,15 +36,6 @@ function goBack() {
 
 function returnToSelection() {
   uni.switchTab({ url: '/pages/index/index' })
-}
-
-async function startOver() {
-  if (startingOver.value) return
-  startingOver.value = true
-  const nextMeal = await mealStore.startNewMeal()
-  startingOver.value = false
-  if (nextMeal) uni.switchTab({ url: '/pages/index/index' })
-  else uni.showToast({ title: errorMessage.value || '新饭局创建失败，请重试', icon: 'none' })
 }
 
 function memberInitial(nickname: string) {
@@ -150,15 +140,10 @@ onShareAppMessage(() => ({
       </view>
 
       <button class="share-button" open-type="share">
-        <view class="share-button__icon">
-          <view class="share-button__arrow" />
-          <view class="share-button__box" />
-        </view>
+        <image class="share-button__icon" src="/static/images/plan-detail/share.png" mode="aspectFit" />
         <text>分享给饭搭子</text>
       </button>
-      <button class="restart-button" :loading="startingOver" :disabled="startingOver" @click="startOver">
-        {{ startingOver ? '正在开启…' : '重新点菜' }}
-      </button>
+      <button class="restart-button" @click="returnToSelection">返回选菜页</button>
     </template>
 
     <view v-else class="result-state result-state--empty">
@@ -420,6 +405,7 @@ onShareAppMessage(() => ({
   display: flex;
   width: 100%;
   height: 88rpx;
+  padding: 0 28rpx;
   margin-top: 24rpx;
   align-items: center;
   justify-content: center;
@@ -429,49 +415,14 @@ onShareAppMessage(() => ({
   box-shadow: 0 12rpx 28rpx rgba(255, 118, 0, 0.22);
   font-size: 29rpx;
   font-weight: 800;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
 .share-button__icon {
-  position: relative;
-  width: 42rpx;
-  height: 42rpx;
-  margin-right: 13rpx;
-}
-
-.share-button__box {
-  position: absolute;
-  right: 4rpx;
-  bottom: 2rpx;
-  left: 4rpx;
-  height: 25rpx;
-  border: 3rpx solid #fff;
-  border-radius: 5rpx;
-  border-top: 0;
-}
-
-.share-button__arrow {
-  position: absolute;
-  z-index: 1;
-  top: 2rpx;
-  left: 19rpx;
-  width: 17rpx;
-  height: 17rpx;
-  border-top: 4rpx solid #fff;
-  border-right: 4rpx solid #fff;
-  transform: rotate(-45deg);
-}
-
-.share-button__arrow::after {
-  position: absolute;
-  top: 4rpx;
-  right: 4rpx;
-  width: 4rpx;
-  height: 23rpx;
-  border-radius: 3rpx;
-  background: #fff;
-  content: '';
-  transform: rotate(45deg);
-  transform-origin: top center;
+  width: 48rpx;
+  height: 48rpx;
+  margin-right: 11rpx;
 }
 
 .restart-button {

@@ -3,7 +3,7 @@ import { onLoad, onPullDownRefresh, onShareAppMessage, onShow } from '@dcloudio/
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
-import { dishImageFor, dishTagFor } from '@/config/dish-images'
+import { dishImageFor, dishTagFor, mealDishKindFor, type MealDishKind } from '@/config/dish-images'
 import { mealSharePath } from '@/config/meal-share'
 import { useMealStore } from '@/stores/meal'
 import { useRecipeStore } from '@/stores/recipe'
@@ -24,6 +24,13 @@ const avatarErrors = ref<string[]>([])
 const mealClock = ref(Date.now())
 const mealConfirmed = computed(() => meal.value?.status === 'confirmed')
 const mealCreationFailed = computed(() => Boolean(loggedIn.value && !meal.value && mealError.value))
+const SMART_BATCH_SIZE = 8
+const SMART_BATCH_TARGETS: Array<{ kind: MealDishKind; count: number }> = [
+  { kind: 'meat', count: 3 },
+  { kind: 'vegetable', count: 2 },
+  { kind: 'soup', count: 2 },
+  { kind: 'staple', count: 1 },
+]
 
 function targetMealCopy(now = new Date()) {
   const chinaNow = new Date(now.getTime() + 8 * 60 * 60 * 1000)
@@ -68,16 +75,61 @@ const matchingRecipes = computed(() => {
   ))
 })
 
+function rotateRecipes<T>(items: T[], offset: number) {
+  if (!items.length) return []
+  const normalizedOffset = offset % items.length
+  return [...items.slice(normalizedOffset), ...items.slice(0, normalizedOffset)]
+}
+
+function smartMealBatch(items: typeof recipes.value, round: number) {
+  const buckets: Record<MealDishKind, typeof recipes.value> = {
+    meat: [],
+    vegetable: [],
+    soup: [],
+    staple: [],
+  }
+  items.forEach(recipe => buckets[mealDishKindFor(recipe)].push(recipe))
+
+  const selectedIds = new Set<number>()
+  const selected: typeof recipes.value = []
+  SMART_BATCH_TARGETS.forEach(({ kind, count }, targetIndex) => {
+    const bucket = rotateRecipes(buckets[kind], round * (targetIndex + 2))
+    bucket.slice(0, count).forEach((recipe) => {
+      if (selectedIds.has(recipe.id)) return
+      selectedIds.add(recipe.id)
+      selected.push(recipe)
+    })
+  })
+
+  rotateRecipes(items, round * 5).forEach((recipe) => {
+    if (selected.length >= SMART_BATCH_SIZE || selectedIds.has(recipe.id)) return
+    selectedIds.add(recipe.id)
+    selected.push(recipe)
+  })
+  return selected.slice(0, SMART_BATCH_SIZE)
+}
+
 const visibleRecipes = computed(() => {
   const items = matchingRecipes.value
-  if (items.length <= 8) return items
-  const offset = rotation.value % items.length
-  return [...items.slice(offset), ...items.slice(0, offset)].slice(0, 8)
+  if (keyword.value.trim()) return items
+  if (activeCategory.value === 'hot') return smartMealBatch(items, rotation.value)
+  if (items.length <= SMART_BATCH_SIZE) return items
+  return rotateRecipes(items, rotation.value * 4).slice(0, SMART_BATCH_SIZE)
 })
 const pageError = computed(() => catalogError.value || mealError.value)
 
 function normalizeCategory() {
   if (!categories.value.some(item => item.id === activeCategory.value)) activeCategory.value = categories.value[0]?.id ?? ''
+}
+
+function selectCategory(categoryId: string) {
+  activeCategory.value = categoryId
+  rotation.value = 0
+}
+
+function changeBatch() {
+  rotation.value += 1
+  if (activeCategory.value === 'hot') uni.showToast({ title: '已换一组荤素搭配', icon: 'none' })
 }
 
 async function loadMealSession(force = false) {
@@ -199,44 +251,60 @@ onShareAppMessage(() => ({
 
     <view class="search"><view class="search__icon" /><input v-model="keyword" class="search__input" placeholder="搜菜名或食材" placeholder-class="search__placeholder" confirm-type="search" /><button v-if="keyword" class="search__clear" @click="keyword = ''">×</button></view>
 
-    <scroll-view v-if="categories.length" class="category-scroll" scroll-x :show-scrollbar="false">
-      <view class="category-row">
-        <button v-for="category in categories" :key="category.id" class="category" :class="{ 'category--active': category.id === activeCategory }" @click="activeCategory = category.id; rotation = 0">{{ category.name }}</button>
+    <view class="menu-layout">
+      <view v-if="categories.length" class="category-rail">
+        <button
+          v-for="category in categories"
+          :key="category.id"
+          class="category"
+          :class="{ 'category--active': category.id === activeCategory }"
+          @click="selectCategory(category.id)"
+        >{{ category.name }}</button>
       </view>
-    </scroll-view>
 
-    <view class="section-title"><text>{{ keyword ? '搜索结果' : '大家都爱吃' }}</text><button v-if="!keyword && matchingRecipes.length > 8" @click="rotation += 4"><text>↻</text> 换一批</button></view>
-
-    <view v-if="catalogLoading && !recipes.length" class="state">正在读取真实菜单…</view>
-    <button v-else-if="catalogError && !recipes.length" class="state state--error" @click="loadPage(true)">{{ catalogError }}，点击重试</button>
-    <view v-else-if="visibleRecipes.length" class="dish-grid">
-      <view v-for="recipe in visibleRecipes" :key="recipe.id" class="dish-card">
-        <view class="dish-card__visual">
-          <image :src="dishImageFor(recipe)" mode="aspectFill" />
-          <button v-if="wishCountFor(recipe.id)" class="wish-badge" :class="{ 'wish-badge--mine': mealStore.hasWished(recipe.id) }" @click="toggleWish(recipe.id)">
-            <view class="wish-faces"><view v-for="wisher in wishersFor(recipe.id).slice(0, 3)" :key="wisher.userId" class="wish-face"><image v-if="canShowAvatar(wisher.userId, wisher.avatar)" :src="wisher.avatar" mode="aspectFill" @error="markAvatarError(wisher.userId)" /><text v-else>{{ memberInitial(wisher.nickname) }}</text></view></view>
-            <text>{{ wishCountFor(recipe.id) }} 人想吃</text>
-          </button>
-        </view>
-        <view class="dish-card__body">
-          <text class="dish-card__name">{{ recipe.name }}</text>
-          <view class="dish-card__footer">
-            <text class="dish-card__tag">{{ dishTagFor(recipe) }}</text>
-            <view v-if="mealStore.quantityFor(recipe.id)" class="stepper">
-              <button :disabled="pendingRecipeId === recipe.id" class="stepper__button stepper__button--minus" @click="decrementRecipe(recipe.id)">−</button>
-              <text>{{ mealStore.quantityFor(recipe.id) }}</text>
-              <button :disabled="pendingRecipeId === recipe.id" class="stepper__button stepper__button--plus" @click="incrementRecipe(recipe.id)">＋</button>
-            </view>
-            <button v-else :disabled="pendingRecipeId === recipe.id" class="add-button" @click="addRecipe(recipe.id)">＋</button>
+      <scroll-view class="dish-scroll" scroll-y :show-scrollbar="false">
+        <view class="dish-scroll__content">
+          <view class="section-title">
+            <text>{{ keyword ? '搜索结果' : '大家都爱吃' }}</text>
+            <button v-if="!keyword && matchingRecipes.length > SMART_BATCH_SIZE" aria-label="智能搭配换一批" @click="changeBatch"><text>↻</text> 换一批</button>
           </view>
+
+          <view v-if="catalogLoading && !recipes.length" class="state">正在读取真实菜单…</view>
+          <button v-else-if="catalogError && !recipes.length" class="state state--error" @click="loadPage(true)">{{ catalogError }}，点击重试</button>
+          <view v-else-if="visibleRecipes.length" class="dish-list">
+            <view v-for="recipe in visibleRecipes" :key="recipe.id" class="dish-card">
+              <view class="dish-card__visual">
+                <image :src="dishImageFor(recipe)" mode="aspectFill" />
+              </view>
+              <view class="dish-card__body">
+                <view class="dish-card__heading">
+                  <text class="dish-card__name">{{ recipe.name }}</text>
+                  <button v-if="wishCountFor(recipe.id)" class="wish-badge" :class="{ 'wish-badge--mine': mealStore.hasWished(recipe.id) }" @click="toggleWish(recipe.id)">
+                    <view class="wish-faces"><view v-for="wisher in wishersFor(recipe.id).slice(0, 2)" :key="wisher.userId" class="wish-face"><image v-if="canShowAvatar(wisher.userId, wisher.avatar)" :src="wisher.avatar" mode="aspectFill" @error="markAvatarError(wisher.userId)" /><text v-else>{{ memberInitial(wisher.nickname) }}</text></view></view>
+                    <text>{{ wishCountFor(recipe.id) }} 人想吃</text>
+                  </button>
+                </view>
+                <view class="dish-card__footer">
+                  <text class="dish-card__tag">{{ dishTagFor(recipe) }}</text>
+                  <view v-if="mealStore.quantityFor(recipe.id)" class="stepper">
+                    <button :disabled="pendingRecipeId === recipe.id" class="stepper__button stepper__button--minus" @click="decrementRecipe(recipe.id)">−</button>
+                    <text>{{ mealStore.quantityFor(recipe.id) }}</text>
+                    <button :disabled="pendingRecipeId === recipe.id" class="stepper__button stepper__button--plus" @click="incrementRecipe(recipe.id)">＋</button>
+                  </view>
+                  <button v-else :disabled="pendingRecipeId === recipe.id" class="add-button" @click="addRecipe(recipe.id)">＋</button>
+                </view>
+              </view>
+            </view>
+          </view>
+          <view v-else class="empty"><image src="/static/images/home/meal-mascot.png" mode="aspectFit" /><text class="empty__title">{{ pageError ? '菜单暂时没端上来' : '没找到这道菜' }}</text><text class="empty__copy">{{ pageError || '换个菜名或分类再看看吧' }}</text><button @click="pageError ? loadPage(true) : (keyword = '')">{{ pageError ? '重新加载' : '清空搜索' }}</button></view>
+          <view class="dish-scroll__spacer" />
         </view>
-      </view>
+      </scroll-view>
     </view>
-    <view v-else class="empty"><image src="/static/images/home/meal-mascot.png" mode="aspectFit" /><text class="empty__title">{{ pageError ? '菜单暂时没端上来' : '没找到这道菜' }}</text><text class="empty__copy">{{ pageError || '换个菜名或分类再看看吧' }}</text><button @click="pageError ? loadPage(true) : (keyword = '')">{{ pageError ? '重新加载' : '清空搜索' }}</button></view>
 
     <view class="dock">
       <view class="dock__summary"><template v-if="loggedIn"><text>{{ mealConfirmed ? '菜单已定' : '已选' }} <text class="dock__number">{{ dishCount }}</text> 道</text><text class="dock__dot">·</text><text><text class="dock__number">{{ memberCount }}</text> 人参与</text></template><text v-else>微信登录后一起点菜</text></view>
-      <button class="dock__button" :class="{ 'dock__button--retry': mealCreationFailed }" :loading="mealLoading" :disabled="mealLoading" @click="openMenu">{{ dockButtonLabel }}</button>
+      <button class="dock__button" :class="{ 'dock__button--retry': mealCreationFailed }" :loading="mealLoading" :disabled="mealLoading" @click="openMenu"><text>{{ dockButtonLabel }}</text></button>
     </view>
   </view>
 </template>
@@ -244,9 +312,10 @@ onShareAppMessage(() => ({
 <style scoped lang="scss">
 @use '@/styles/tokens.scss' as *;
 
-.page { position: relative; min-height: 100vh; padding: 0 28rpx calc(env(safe-area-inset-bottom) + 170rpx); overflow-x: hidden; background: $color-page; box-sizing: border-box; }
+.page { position: relative; display: flex; height: 100vh; min-height: 0; padding: 0 28rpx calc(env(safe-area-inset-bottom) + 142rpx); overflow: hidden; flex-direction: column; background: $color-page; box-sizing: border-box; }
 .page__glow { position: absolute; top: -130rpx; right: -150rpx; width: 500rpx; height: 430rpx; border-radius: 50%; background: radial-gradient(circle, rgba(255, 221, 177, .48), rgba(255, 247, 237, 0) 72%); pointer-events: none; }
-.meal-bar, .invite-notice, .hero, .search, .category-scroll, .section-title, .dish-grid, .state, .empty { position: relative; z-index: 1; }
+.meal-bar, .invite-notice, .hero, .search, .menu-layout, .section-title, .dish-list, .state, .empty { position: relative; z-index: 1; }
+.page :deep(.app-header), .meal-bar, .invite-notice, .hero, .search { flex: 0 0 auto; }
 
 .meal-bar { display: flex; min-height: 78rpx; margin-top: 8rpx; align-items: center; justify-content: space-between; gap: 16rpx; }
 .meal-bar__status { display: flex; min-width: 0; flex: 1; align-items: center; gap: 12rpx; }
@@ -275,26 +344,33 @@ onShareAppMessage(() => ({
 .search__placeholder { color: #aaa6a2; }
 .search__clear { display: flex; width: 64rpx; height: 64rpx; padding: 0; align-items: center; justify-content: center; color: #aaa6a2; font-size: 38rpx; }
 
-.category-scroll { width: 100%; margin-top: 20rpx; white-space: nowrap; }
-.category-row { display: inline-flex; min-width: 100%; gap: 10rpx; }
-.category { display: inline-flex; min-width: 126rpx; height: 68rpx; padding: 0 25rpx; align-items: center; justify-content: center; border-radius: 34rpx; background: rgba(245, 240, 234, .92); color: #77716c; font-size: 26rpx; font-weight: 650; box-sizing: border-box; }
-.category--active { background: linear-gradient(135deg, #ffab30, $color-primary-deep); box-shadow: 0 8rpx 18rpx rgba(255, 118, 0, .18); color: #fff; }
-.section-title { display: flex; min-height: 88rpx; align-items: center; justify-content: space-between; color: $color-text; font-size: 34rpx; font-weight: 850; }
-.section-title button { display: flex; min-width: 128rpx; height: 64rpx; padding: 0 8rpx; align-items: center; justify-content: flex-end; color: $color-primary-deep; font-size: 26rpx; font-weight: 650; }
+.menu-layout { display: flex; min-height: 0; margin-top: 20rpx; flex: 1; align-items: stretch; gap: 16rpx; overflow: hidden; }
+.category-rail { width: 128rpx; min-height: 0; overflow: hidden; flex: 0 0 128rpx; border-radius: 26rpx; background: rgba(244, 238, 231, .9); }
+.category { position: relative; display: flex; width: 100%; min-height: 98rpx; padding: 0 12rpx; align-items: center; justify-content: center; color: #77716c; font-size: 26rpx; font-weight: 700; box-sizing: border-box; }
+.category::after { position: absolute; right: 16rpx; bottom: 0; left: 16rpx; height: 1rpx; background: rgba(139, 108, 84, .08); content: ''; }
+.category:last-child::after { display: none; }
+.category--active { background: rgba(255, 255, 255, .98); color: $color-text; font-weight: 850; }
+.category--active::before { position: absolute; top: 24rpx; bottom: 24rpx; left: 0; width: 7rpx; border-radius: 0 7rpx 7rpx 0; background: $color-primary; content: ''; }
+.dish-scroll { min-width: 0; height: 100%; flex: 1; }
+.dish-scroll__content { min-height: 100%; }
+.dish-scroll__spacer { height: 24rpx; }
+.section-title { display: flex; min-height: 72rpx; align-items: center; justify-content: space-between; color: $color-text; font-size: 32rpx; font-weight: 850; }
+.section-title button { display: flex; min-width: 122rpx; height: 64rpx; padding: 0; align-items: center; justify-content: flex-end; color: $color-primary-deep; font-size: 25rpx; font-weight: 700; }
 .section-title button text { font-size: 36rpx; }
 
-.dish-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18rpx; }
-.dish-card { min-width: 0; overflow: hidden; border: 1rpx solid rgba(110, 77, 51, .04); border-radius: 28rpx; background: $color-card; box-shadow: $shadow-card; }
-.dish-card__visual { position: relative; height: 230rpx; overflow: hidden; background: #f3ebe2; }
+.dish-list { display: flex; min-width: 0; flex-direction: column; gap: 16rpx; }
+.dish-card { display: flex; min-width: 0; min-height: 184rpx; overflow: hidden; border: 1rpx solid rgba(110, 77, 51, .04); border-radius: 26rpx; background: $color-card; box-shadow: $shadow-card; }
+.dish-card__visual { position: relative; width: 210rpx; min-height: 184rpx; overflow: hidden; flex: 0 0 210rpx; background: #f3ebe2; }
 .dish-card__visual > image { width: 100%; height: 100%; }
-.wish-badge { position: absolute; top: 12rpx; left: 12rpx; display: flex; min-height: 52rpx; max-width: calc(100% - 24rpx); padding: 0 14rpx 0 7rpx; align-items: center; border-radius: 28rpx; background: rgba(255, 255, 255, .94); box-shadow: 0 5rpx 12rpx rgba(56, 35, 20, .12); color: #554a42; font-size: 24rpx; font-weight: 650; box-sizing: border-box; }
+.dish-card__heading { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 8rpx; }
+.wish-badge { display: flex; min-height: 46rpx; max-width: 168rpx; padding: 0 10rpx 0 5rpx; overflow: hidden; flex: 0 0 auto; align-items: center; border-radius: 24rpx; background: rgba(255, 248, 239, .98); color: #7b4b2d; font-size: 24rpx; font-weight: 650; white-space: nowrap; box-sizing: border-box; }
 .wish-badge--mine { background: rgba(255, 244, 227, .96); color: #9f4b13; }
-.wish-faces { display: flex; margin-right: 8rpx; }
-.wish-face { display: flex; width: 38rpx; height: 38rpx; margin-right: -7rpx; overflow: hidden; align-items: center; justify-content: center; border: 2rpx solid #fff; border-radius: 50%; background: #ffe3d1; color: #70452d; font-size: 24rpx; box-sizing: border-box; }
+.wish-faces { display: flex; margin-right: 7rpx; }
+.wish-face { display: flex; width: 34rpx; height: 34rpx; margin-right: -7rpx; overflow: hidden; align-items: center; justify-content: center; border: 2rpx solid #fff; border-radius: 50%; background: #ffe3d1; color: #70452d; font-size: 24rpx; box-sizing: border-box; }
 .wish-face image { width: 100%; height: 100%; }
-.dish-card__body { padding: 16rpx 16rpx 17rpx; }
-.dish-card__name { display: block; overflow: hidden; color: $color-text; font-size: 29rpx; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-.dish-card__footer { display: flex; min-height: 72rpx; margin-top: 7rpx; align-items: center; justify-content: space-between; gap: 8rpx; }
+.dish-card__body { display: flex; min-width: 0; padding: 18rpx 14rpx 14rpx 18rpx; flex: 1; flex-direction: column; box-sizing: border-box; }
+.dish-card__name { display: block; min-width: 0; overflow: hidden; flex: 1; color: $color-text; font-size: 29rpx; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.dish-card__footer { display: flex; min-height: 68rpx; margin-top: auto; align-items: center; justify-content: space-between; gap: 8rpx; }
 .dish-card__tag { min-width: 0; overflow: hidden; padding: 7rpx 10rpx; border-radius: 12rpx; background: #fff3e3; color: #b56b21; font-size: 24rpx; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .add-button, .stepper__button { display: flex; width: 68rpx; height: 68rpx; padding: 0; flex: 0 0 68rpx; align-items: center; justify-content: center; border-radius: 50%; font-size: 38rpx; line-height: 1; }
 .add-button, .stepper__button--plus { background: linear-gradient(135deg, #ffab2e, $color-primary-deep); color: #fff; }
@@ -315,9 +391,17 @@ onShareAppMessage(() => ({
 .dock__summary { display: flex; min-width: 0; align-items: baseline; color: $color-text; font-size: 27rpx; font-weight: 750; }
 .dock__number { color: $color-primary-deep; font-size: 36rpx; font-weight: 900; }
 .dock__dot { margin: 0 9rpx; color: #b6aaa0; }
-.dock__button { min-width: 220rpx; height: 80rpx; padding: 0 28rpx; border-radius: 24rpx; background: linear-gradient(135deg, #ffac32, $color-primary-deep); box-shadow: 0 8rpx 18rpx rgba(255, 118, 0, .18); color: #fff; font-size: 28rpx; font-weight: 800; }
+.dock__button { display: flex; min-width: 220rpx; height: 80rpx; padding: 0 24rpx; align-items: center; justify-content: center; border-radius: 24rpx; background: linear-gradient(135deg, #ffac32, $color-primary-deep); box-shadow: 0 8rpx 18rpx rgba(255, 118, 0, .18); color: #fff; font-size: 28rpx; font-weight: 800; line-height: 1; white-space: nowrap; box-sizing: border-box; }
+.dock__button text { display: block; line-height: 1.2; }
 .dock__button--retry { background: #fff1df; box-shadow: none; color: $color-primary-deep; }
 .dock__button[disabled] { opacity: .72; }
+
+@media (max-width: 360px) {
+  .category-rail { width: 116rpx; flex-basis: 116rpx; }
+  .dish-card__visual { width: 176rpx; flex-basis: 176rpx; }
+  .wish-badge { max-width: 145rpx; }
+  .dock__button { min-width: 204rpx; padding: 0 18rpx; }
+}
 
 @media (min-width: 500px) {
   .page { max-width: 750rpx; margin: 0 auto; }
