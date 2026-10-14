@@ -6,6 +6,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import { useMealClock } from '@/composables/useMealClock'
 import { dishImageFor } from '@/config/dish-images'
 import { mealSharePath } from '@/config/meal-share'
+import { openRecipeDetail } from '@/config/recipe-navigation'
 import { useMealStore } from '@/stores/meal'
 
 const mealStore = useMealStore()
@@ -121,10 +122,9 @@ onShareAppMessage(() => ({
       </view>
 
       <view class="dish-grid">
-        <view v-for="item in selectedDishes" :key="item.recipe.id" class="dish-tile">
+        <view v-for="item in selectedDishes" :key="item.recipe.id" class="dish-tile" @click="openRecipeDetail(item.recipe.id)">
           <view class="dish-tile__visual">
             <image class="dish-tile__image" :src="dishImageFor(item.recipe)" mode="aspectFill" />
-            <text v-if="item.quantity > 1" class="dish-tile__quantity">×{{ item.quantity }}</text>
           </view>
           <text class="dish-tile__name">{{ item.recipe.name }}</text>
         </view>
@@ -303,25 +303,6 @@ onShareAppMessage(() => ({
 .dish-tile__image {
   width: 100%;
   height: 100%;
-}
-
-.dish-tile__quantity {
-  position: absolute;
-  top: 12rpx;
-  right: 12rpx;
-  display: flex;
-  min-width: 50rpx;
-  height: 45rpx;
-  padding: 0 12rpx;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  border: 3rpx solid rgba(255, 255, 255, 0.92);
-  border-radius: 24rpx;
-  background: rgba(255, 118, 0, 0.92);
-  font-size: 24rpx;
-  font-weight: 800;
-  box-sizing: border-box;
 }
 
 .dish-tile__name {

@@ -34,7 +34,6 @@ export const useMealStore = defineStore('meal', () => {
   const members = computed(() => meal.value?.members ?? [])
   const selectedDishes = computed(() => meal.value?.dishes ?? [])
   const dishCount = computed(() => selectedDishes.value.length)
-  const itemCount = computed(() => selectedDishes.value.reduce((total, dish) => total + dish.quantity, 0))
   const memberCount = computed(() => members.value.length)
   const beforeMealStart = computed(() => Boolean(meal.value && mealClock.value < mealEditingDeadline(meal.value)))
   const canEdit = computed(() => Boolean(loggedIn.value && meal.value?.isMember && meal.value.status === 'active' && beforeMealStart.value))
@@ -176,10 +175,6 @@ export const useMealStore = defineStore('meal', () => {
     return selectedDishes.value.find(dish => dish.recipe.id === recipeId)
   }
 
-  function quantityFor(recipeId: number) {
-    return dishFor(recipeId)?.quantity ?? 0
-  }
-
   function hasWished(recipeId: number) {
     const userId = currentUserId.value
     return Boolean(userId && dishFor(recipeId)?.wishers.some(wisher => wisher.userId === userId))
@@ -200,47 +195,6 @@ export const useMealStore = defineStore('meal', () => {
     } finally {
       pendingRecipeId.value = null
     }
-  }
-
-  function addRecipe(recipeId: number) {
-    if (!meal.value) return Promise.resolve(false)
-    const mealId = meal.value.id
-    const dish = dishFor(recipeId)
-    if (!dish || !hasWished(recipeId)) {
-      return mutate(recipeId, () => mealApi.setWish(mealId, recipeId))
-    }
-    return mutate(recipeId, () => mealApi.setDish(mealId, recipeId, Math.min(20, dish.quantity + 1)))
-  }
-
-  function incrementRecipe(recipeId: number) {
-    if (!meal.value) return Promise.resolve(false)
-    const mealId = meal.value.id
-    const quantity = quantityFor(recipeId)
-    if (!quantity) return mutate(recipeId, () => mealApi.setWish(mealId, recipeId))
-    if (quantity >= 20) return Promise.resolve(false)
-    return mutate(recipeId, () => mealApi.adjustDishQuantity(mealId, recipeId, 1))
-  }
-
-  function decrementRecipe(recipeId: number) {
-    if (!meal.value) return Promise.resolve(false)
-    const mealId = meal.value.id
-    const dish = dishFor(recipeId)
-    if (!dish) return Promise.resolve(false)
-    if (dish.quantity <= 1) {
-      if (hasWished(recipeId)) return mutate(recipeId, () => mealApi.removeWish(mealId, recipeId))
-      if (dish.wishCount > 0) {
-        uni.showToast({ title: '还有饭搭子想吃这道菜', icon: 'none' })
-        return Promise.resolve(false)
-      }
-      return mutate(recipeId, () => mealApi.removeDish(mealId, recipeId))
-    }
-    return mutate(recipeId, () => mealApi.adjustDishQuantity(mealId, recipeId, -1))
-  }
-
-  function removeRecipe(recipeId: number) {
-    if (!meal.value) return Promise.resolve(false)
-    const mealId = meal.value.id
-    return mutate(recipeId, () => mealApi.removeDish(mealId, recipeId))
   }
 
   function toggleWish(recipeId: number) {
@@ -318,7 +272,6 @@ export const useMealStore = defineStore('meal', () => {
     members,
     selectedDishes,
     dishCount,
-    itemCount,
     memberCount,
     canEdit,
     canReopen,
@@ -332,12 +285,7 @@ export const useMealStore = defineStore('meal', () => {
     loadMeal,
     loadMealById,
     dishFor,
-    quantityFor,
     hasWished,
-    addRecipe,
-    incrementRecipe,
-    decrementRecipe,
-    removeRecipe,
     toggleWish,
     confirmMeal,
     reopenMeal,

@@ -623,7 +623,6 @@ export async function createPostgresMealRepository(
            USING deleted_wish dw
            WHERE d.meal_id = dw.meal_id
              AND d.recipe_id = dw.recipe_id
-             AND d.quantity = 1
              AND NOT EXISTS (
                SELECT 1
                FROM fandazi_meal_wish w

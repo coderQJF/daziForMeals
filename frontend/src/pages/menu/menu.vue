@@ -3,9 +3,11 @@ import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import DishSelectionButton from '@/components/DishSelectionButton.vue'
 import { useMealClock } from '@/composables/useMealClock'
 import { dishImageFor, mealDishKindFor, type MealDishKind } from '@/config/dish-images'
 import { mealSharePath } from '@/config/meal-share'
+import { openRecipeDetail } from '@/config/recipe-navigation'
 import { authApi } from '@/services/auth'
 import { requestMealNotification } from '@/services/wechat'
 import { useMealStore } from '@/stores/meal'
@@ -305,7 +307,7 @@ onShareAppMessage(() => ({
           <view class="skeleton skeleton--title" />
           <view class="skeleton skeleton--tag" />
         </view>
-        <view class="skeleton skeleton--stepper" />
+        <view class="skeleton skeleton--selection" />
       </view>
     </view>
 
@@ -322,27 +324,20 @@ onShareAppMessage(() => ({
         <view class="section-heading__spark"><text /> <text /> <text /></view>
       </view>
 
-      <view v-for="item in selectedDishes" :key="item.recipe.id" class="dish-card">
+      <view v-for="item in selectedDishes" :key="item.recipe.id" class="dish-card" @click="openRecipeDetail(item.recipe.id)">
         <image class="dish-card__image" :src="dishImageFor(item.recipe)" mode="aspectFill" />
         <view class="dish-card__copy">
           <text class="dish-card__name">{{ item.recipe.name }}</text>
           <text class="dish-card__tag">{{ wishLabel(item) }}</text>
+          <text class="dish-card__tutorial">查看做法 ›</text>
         </view>
-        <view v-if="canEdit" class="stepper">
-          <button
-            class="stepper__button stepper__button--minus"
-            :aria-label="`减少一份${item.recipe.name}`"
-            :disabled="pendingRecipeId === item.recipe.id"
-            @click="mealStore.decrementRecipe(item.recipe.id)"
-          >−</button>
-          <text class="stepper__value">{{ item.quantity }}</text>
-          <button
-            class="stepper__button stepper__button--plus"
-            :aria-label="`增加一份${item.recipe.name}`"
-            :disabled="pendingRecipeId === item.recipe.id"
-            @click="mealStore.incrementRecipe(item.recipe.id)"
-          >＋</button>
-        </view>
+        <DishSelectionButton
+          v-if="canEdit"
+          :dish-name="item.recipe.name"
+          :selected="mealStore.hasWished(item.recipe.id)"
+          :disabled="pendingRecipeId !== null || pageLoading || confirming"
+          @toggle="mealStore.toggleWish(item.recipe.id)"
+        />
       </view>
 
       <button v-if="canEdit" class="add-more-card" @click="continueSelecting">
@@ -722,32 +717,7 @@ onShareAppMessage(() => ({
   white-space: nowrap;
 }
 
-.stepper {
-  display: flex;
-  height: 64rpx;
-  flex: 0 0 auto;
-  align-items: center;
-  overflow: hidden;
-  border-radius: 32rpx;
-  background: #fffaf3;
-}
-
-.stepper__button {
-  display: flex;
-  width: 64rpx;
-  height: 64rpx;
-  padding: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 38rpx;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.stepper__button--minus { color: $color-primary-deep; background: #fff1dc; }
-.stepper__button--plus { color: #fff; background: linear-gradient(135deg, #ff9f22, #ff7300); }
-.stepper__value { width: 45rpx; color: #211b17; font-size: 29rpx; font-weight: 700; text-align: center; }
+.dish-card__tutorial { margin-top: 8rpx; color: $color-text-secondary; font-size: 24rpx; line-height: 1.3; }
 
 .add-more-card {
   display: flex;
@@ -825,7 +795,7 @@ onShareAppMessage(() => ({
 .skeleton-copy { min-width: 0; padding: 0 17rpx; flex: 1; }
 .skeleton--title { width: 78%; height: 27rpx; border-radius: 10rpx; }
 .skeleton--tag { width: 54%; height: 23rpx; margin-top: 14rpx; border-radius: 10rpx; }
-.skeleton--stepper { width: 150rpx; height: 64rpx; border-radius: 32rpx; }
+.skeleton--selection { width: 128rpx; height: 68rpx; border-radius: 34rpx; }
 
 .menu-footer {
   position: fixed;

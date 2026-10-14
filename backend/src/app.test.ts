@@ -1234,6 +1234,51 @@ test('removing wishes preserves other users and removes the final wish-only dish
   }
 })
 
+test('dish selection is idempotent and the last cancellation removes legacy multi-serving dishes', async () => {
+  const app = mealApp()
+  try {
+    const ownerToken = await loginMealUser(app, 'selection-owner', 'selection-owner-device')
+    const memberToken = await loginMealUser(app, 'selection-member', 'selection-member-device')
+    const headers = { authorization: `Bearer ${ownerToken}` }
+    const memberHeaders = { authorization: `Bearer ${memberToken}` }
+    const meal = await createMealFor(app, ownerToken)
+    const wishesUrl = `/api/v1/meals/${meal.id}/wishes/1001`
+    const joined = await app.inject({ method: 'POST', url: `/api/v1/meals/${meal.id}/join`, headers: memberHeaders, payload: { inviteCode: meal.inviteCode } })
+    assert.equal(joined.statusCode, 200, joined.body)
+
+    const selections = await Promise.all([
+      app.inject({ method: 'PUT', url: wishesUrl, headers }),
+      app.inject({ method: 'PUT', url: wishesUrl, headers }),
+    ])
+    assert.ok(selections.every(response => response.statusCode === 200))
+    const current = await app.inject({ method: 'GET', url: `/api/v1/meals/${meal.id}`, headers })
+    assert.equal(current.json().data.dishes.length, 1)
+    assert.equal(current.json().data.dishes[0].quantity, 1)
+    assert.equal(current.json().data.dishes[0].wishCount, 1)
+
+    // An earlier app may already have saved a quantity greater than one.
+    const legacy = await app.inject({ method: 'PUT', url: `/api/v1/meals/${meal.id}/dishes/1001`, headers, payload: { quantity: 3 } })
+    assert.equal(legacy.statusCode, 200, legacy.body)
+    const memberSelected = await app.inject({ method: 'PUT', url: wishesUrl, headers: memberHeaders })
+    assert.equal(memberSelected.statusCode, 200, memberSelected.body)
+    assert.equal(memberSelected.json().data.dishes.length, 1)
+    assert.equal(memberSelected.json().data.dishes[0].wishCount, 2)
+
+    const ownerCancelled = await app.inject({ method: 'DELETE', url: wishesUrl, headers })
+    assert.equal(ownerCancelled.statusCode, 200, ownerCancelled.body)
+    assert.equal(ownerCancelled.json().data.dishes.length, 1)
+    assert.equal(ownerCancelled.json().data.dishes[0].wishCount, 1)
+    const repeatedCancellation = await app.inject({ method: 'DELETE', url: wishesUrl, headers })
+    assert.equal(repeatedCancellation.statusCode, 200, repeatedCancellation.body)
+    assert.equal(repeatedCancellation.json().data.dishes[0].wishCount, 1)
+    const lastCancelled = await app.inject({ method: 'DELETE', url: wishesUrl, headers: memberHeaders })
+    assert.equal(lastCancelled.statusCode, 200, lastCancelled.body)
+    assert.deepEqual(lastCancelled.json().data.dishes, [])
+  } finally {
+    await app.close()
+  }
+})
+
 test('meal categories are public while operations writes are protected and immediately visible', async () => {
   const app = buildApp({ logger: false, opsAdminToken: 'operations-secret' })
   const operationsHeaders = { authorization: 'Bearer operations-secret' }

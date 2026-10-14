@@ -327,7 +327,8 @@ export function createMemoryMealRepository(recipes: RecipeRepository): MealRepos
       wishes?.delete(userId)
       if (wishes && wishes.size === 0) {
         meal.wishes.delete(recipeId)
-        if (meal.dishes.get(recipeId)?.quantity === 1) meal.dishes.delete(recipeId)
+        // Selection is per member, not a serving count (including legacy dishes).
+        meal.dishes.delete(recipeId)
       }
       meal.updatedAt = new Date().toISOString()
       return aggregate(meal, userId)

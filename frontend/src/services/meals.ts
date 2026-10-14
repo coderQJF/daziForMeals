@@ -23,15 +23,6 @@ export const mealApi = {
   removeWish(mealId: string, recipeId: number) {
     return apiRequest<Meal>('DELETE', `/meals/${encodeURIComponent(mealId)}/wishes/${recipeId}`)
   },
-  setDish(mealId: string, recipeId: number, quantity: number) {
-    return apiRequest<Meal>('PUT', `/meals/${encodeURIComponent(mealId)}/dishes/${recipeId}`, { quantity })
-  },
-  adjustDishQuantity(mealId: string, recipeId: number, delta: 1 | -1) {
-    return apiRequest<Meal>('POST', `/meals/${encodeURIComponent(mealId)}/dishes/${recipeId}/quantity`, { delta })
-  },
-  removeDish(mealId: string, recipeId: number) {
-    return apiRequest<Meal>('DELETE', `/meals/${encodeURIComponent(mealId)}/dishes/${recipeId}`)
-  },
   confirm(mealId: string) {
     return apiRequest<Meal>('PUT', `/meals/${encodeURIComponent(mealId)}/confirm`)
   },
