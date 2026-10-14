@@ -9,7 +9,8 @@
     "build:mp-weixin": "uni build -p mp-weixin",
     "upload:mp-weixin": "miniprogram-ci upload --appid wx7fce988b19eee10d --pp dist/build/mp-weixin --use-project-config --enable-minify --locales zh",
     "type-check": "vue-tsc --noEmit",
-    "test:navigation": "node --test scripts/test-navigation.mjs"
+    "test:navigation": "node --test scripts/test-navigation.mjs",
+    "test:interactions": "node --test scripts/test-navigation.mjs scripts/test-recipe-favorites.mjs"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5020320260806002",

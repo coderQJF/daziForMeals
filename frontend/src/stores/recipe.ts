@@ -54,6 +54,7 @@ export const useRecipeStore = defineStore('recipe', () => {
   const userLoaded = ref(false)
   const userLoading = ref(false)
   const userErrorMessage = ref('')
+  const favoriteSaving = ref(false)
   const phoneBound = ref(false)
   const phoneMasked = ref('')
 
@@ -86,7 +87,7 @@ export const useRecipeStore = defineStore('recipe', () => {
   }
 
   async function loadUserState(force = false) {
-    if (userLoading.value || (userLoaded.value && !force)) return
+    if (favoriteSaving.value || userLoading.value || (userLoaded.value && !force)) return
     userLoading.value = true
     userErrorMessage.value = ''
     try {
@@ -196,14 +197,31 @@ export const useRecipeStore = defineStore('recipe', () => {
     return favoriteIds.value.includes(recipeId)
   }
 
-  function toggleFavorite(recipeId = recommendation.value.id) {
-    if (!recipeId) return
+  async function toggleFavorite(recipeId = recommendation.value.id) {
+    if (!Number.isInteger(recipeId) || recipeId < 1 || favoriteSaving.value) return false
+    const previousIds = [...favoriteIds.value]
+    favoriteSaving.value = true
+    userErrorMessage.value = ''
     favoriteIds.value = isFavorite(recipeId)
       ? favoriteIds.value.filter(id => id !== recipeId)
       : [...favoriteIds.value, recipeId]
     recommendation.value.isFavorite = isFavorite(recommendation.value.id)
     recipes.value = recipes.value.map(recipe => withLocalState(recipe))
-    void persistUserState({ favoriteRecipeIds: favoriteIds.value })
+    try {
+      const state = await experienceApi.updateUser({ favoriteRecipeIds: [...favoriteIds.value] })
+      applyUserState(state)
+      userLoaded.value = true
+      return true
+    } catch (error) {
+      favoriteIds.value = previousIds
+      recommendation.value = withLocalState(recommendation.value)
+      blindBoxRecipe.value = withLocalState(blindBoxRecipe.value)
+      recipes.value = recipes.value.map(withLocalState)
+      userErrorMessage.value = error instanceof Error ? error.message : '收藏没有保存，请重试'
+      return false
+    } finally {
+      favoriteSaving.value = false
+    }
   }
 
   function selectRecommendation(recipe: Recipe) {
@@ -315,6 +333,7 @@ export const useRecipeStore = defineStore('recipe', () => {
     userLoaded,
     userLoading,
     userErrorMessage,
+    favoriteSaving,
     phoneBound,
     phoneMasked,
     applyUserState,

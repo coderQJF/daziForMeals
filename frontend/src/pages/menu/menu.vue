@@ -329,7 +329,6 @@ onShareAppMessage(() => ({
         <view class="dish-card__copy">
           <text class="dish-card__name">{{ item.recipe.name }}</text>
           <text class="dish-card__tag">{{ wishLabel(item) }}</text>
-          <text class="dish-card__tutorial">查看做法 ›</text>
         </view>
         <DishSelectionButton
           v-if="canEdit"
@@ -667,7 +666,7 @@ onShareAppMessage(() => ({
   min-height: 140rpx;
   margin-top: 14rpx;
   padding: 11rpx 12rpx 11rpx 11rpx;
-  align-items: center;
+  align-items: stretch;
   border: 1rpx solid rgba(99, 66, 41, 0.025);
   border-radius: 27rpx;
   background: #fff;
@@ -717,7 +716,8 @@ onShareAppMessage(() => ({
   white-space: nowrap;
 }
 
-.dish-card__tutorial { margin-top: 8rpx; color: $color-text-secondary; font-size: 24rpx; line-height: 1.3; }
+.dish-card__copy .dish-card__tag { margin-top: auto; }
+.dish-card :deep(.dish-selection) { align-self: flex-end; }
 
 .add-more-card {
   display: flex;
@@ -795,7 +795,7 @@ onShareAppMessage(() => ({
 .skeleton-copy { min-width: 0; padding: 0 17rpx; flex: 1; }
 .skeleton--title { width: 78%; height: 27rpx; border-radius: 10rpx; }
 .skeleton--tag { width: 54%; height: 23rpx; margin-top: 14rpx; border-radius: 10rpx; }
-.skeleton--selection { width: 128rpx; height: 68rpx; border-radius: 34rpx; }
+.skeleton--selection { width: 68rpx; height: 68rpx; border-radius: 50%; }
 
 .menu-footer {
   position: fixed;

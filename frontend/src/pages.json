@@ -79,6 +79,7 @@
       "path": "pages/recipe/detail",
       "style": {
         "navigationStyle": "custom",
+        "enableShareAppMessage": true,
         "backgroundColor": "#FFF7ED"
       }
     },

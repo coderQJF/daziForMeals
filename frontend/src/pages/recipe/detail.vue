@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
+import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
+import AppHeader from '@/components/AppHeader.vue'
 import { returnFromRecipeDetail } from '@/config/recipe-navigation'
 import { useRecipeStore } from '@/stores/recipe'
 
 const store = useRecipeStore()
-const { recommendation, loading, errorMessage } = storeToRefs(store)
+const { recommendation, loading, errorMessage, favoriteSaving, userLoading } = storeToRefs(store)
 const requestedRecipeId = ref(0)
 const fromShare = ref(false)
 const isCurrentRecipe = computed(() => recommendation.value.id === requestedRecipeId.value)
@@ -15,6 +16,15 @@ const steps = computed(() => recommendation.value.steps)
 
 function goBack() {
   returnFromRecipeDetail(fromShare.value)
+}
+
+async function toggleFavorite() {
+  if (!isCurrentRecipe.value || favoriteSaving.value || userLoading.value) return
+  const saved = await store.toggleFavorite(requestedRecipeId.value)
+  uni.showToast({
+    title: saved ? (store.isFavorite(requestedRecipeId.value) ? '已收藏' : '已取消收藏') : store.userErrorMessage || '收藏没有保存，请重试',
+    icon: 'none',
+  })
 }
 
 async function loadDetail() {
@@ -37,6 +47,8 @@ onLoad(async (query) => {
   await loadDetail()
 })
 
+onShow(() => { void store.loadUserState(true) })
+
 onShareAppMessage(() => ({
   title: `${recommendation.value.name}｜饭搭子`,
   path: `/pages/recipe/detail?id=${recommendation.value.id}&entry=share`,
@@ -45,6 +57,9 @@ onShareAppMessage(() => ({
 
 <template>
   <view class="detail-page">
+    <view class="hero-nav">
+      <AppHeader title="" :show-back="true" :page-padding="24" @back="goBack" />
+    </view>
     <view v-if="loading && !isCurrentRecipe" class="detail-state">正在加载菜谱详情…</view>
     <button v-else-if="errorMessage && !isCurrentRecipe" class="detail-state detail-state--error" @click="loadDetail">{{ errorMessage }}，点击重试</button>
     <template v-else-if="isCurrentRecipe">
@@ -52,24 +67,6 @@ onShareAppMessage(() => ({
       <image class="hero-panel__image" :src="recommendation.hero" mode="aspectFill" />
       <view class="hero-panel__shade" />
 
-      <view class="hero-nav">
-        <button class="hero-nav__button" aria-label="返回" @click="goBack">
-          <image src="/static/images/plan-detail/back.png" mode="aspectFit" />
-        </button>
-        <view class="hero-nav__actions">
-          <button class="hero-nav__button hero-nav__button--favorite" aria-label="收藏" @click="store.toggleFavorite">
-            <image
-              :src="recommendation.isFavorite
-                ? '/static/images/recipe-detail/favorite-filled-orange.png'
-                : '/static/images/recipe-detail/favorite-outline-white.png'"
-              mode="aspectFit"
-            />
-          </button>
-          <button class="hero-nav__button" aria-label="分享" open-type="share">
-            <image src="/static/images/plan-detail/share.png" mode="aspectFit" />
-          </button>
-        </view>
-      </view>
     </view>
 
     <view class="detail-content">
@@ -115,21 +112,24 @@ onShareAppMessage(() => ({
     </view>
 
     <view class="bottom-actions">
-      <button class="bottom-button bottom-button--favorite" @click="store.toggleFavorite">
-        <image :src="recommendation.isFavorite ? '/static/tabbar/favorite-active.png' : '/static/tabbar/favorite.png'" mode="aspectFit" />
+      <button class="bottom-button bottom-button--favorite" :loading="favoriteSaving" :disabled="favoriteSaving || userLoading" @click="toggleFavorite">
         <text>{{ recommendation.isFavorite ? '已收藏' : '收藏' }}</text>
       </button>
+      <button class="bottom-button bottom-button--share" open-type="share">分享</button>
     </view>
     </template>
   </view>
 </template>
 
 <style scoped lang="scss">
+@use '@/styles/tokens.scss' as *;
+
 .detail-page {
+  position: relative;
   min-height: 100vh;
   overflow-x: hidden;
   padding-bottom: calc(132rpx + env(safe-area-inset-bottom));
-  background: #fdf9f4;
+  background: $color-page;
   box-sizing: border-box;
 }
 
@@ -174,41 +174,17 @@ onShareAppMessage(() => ({
 
 .hero-nav {
   position: absolute;
-  z-index: 2;
-  top: calc(var(--status-bar-height) + 66rpx);
+  z-index: 4;
+  top: 0;
   right: 24rpx;
   left: 24rpx;
-  display: flex;
-  height: 72rpx;
-  align-items: center;
-  justify-content: space-between;
 }
 
-.hero-nav__actions {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-}
-
-.hero-nav__button {
-  display: flex;
-  width: 72rpx;
-  height: 72rpx;
-  align-items: center;
-  justify-content: center;
+.hero-nav :deep(.app-header__back) {
+  margin: 0;
   border-radius: 50%;
   background: rgba(255, 250, 244, 0.86);
   box-shadow: 0 6rpx 18rpx rgba(52, 31, 17, 0.1);
-  backdrop-filter: blur(8rpx);
-}
-
-.hero-nav__button image {
-  width: 49rpx;
-  height: 49rpx;
-}
-
-.hero-nav__button--favorite {
-  background: rgba(48, 31, 20, 0.2);
 }
 
 .detail-content {
@@ -217,7 +193,7 @@ onShareAppMessage(() => ({
   margin-top: -34rpx;
   padding: 27rpx 30rpx 34rpx;
   border-radius: 35rpx 35rpx 0 0;
-  background: #fdf9f4;
+  background: $color-page;
 }
 
 .recipe-heading {
@@ -445,7 +421,8 @@ onShareAppMessage(() => ({
   display: grid;
   min-height: 101rpx;
   padding: 9rpx;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
   border-radius: 30rpx;
   background: rgba(255, 255, 255, 0.97);
   box-shadow: 0 -8rpx 30rpx rgba(68, 43, 25, 0.08);
@@ -454,24 +431,26 @@ onShareAppMessage(() => ({
 .bottom-button {
   display: flex;
   height: 83rpx;
+  min-width: 0;
+  margin: 0;
+  padding: 0 20rpx;
   align-items: center;
   justify-content: center;
   border-radius: 25rpx;
   font-size: 27rpx;
   font-weight: 700;
-}
-
-.bottom-button image {
-  width: 43rpx;
-  height: 43rpx;
-  margin-right: 10rpx;
+  line-height: 1.2;
+  box-sizing: border-box;
 }
 
 .bottom-button--favorite {
-  color: #5d5854;
-  border: 2rpx solid #f28a38;
-  background: #fff;
+  color: $color-primary-deep;
+  border: 2rpx solid $color-primary;
+  background: $color-card;
 }
+
+.bottom-button--share { color: #fff; background: $color-primary; }
+.bottom-button[disabled] { opacity: .6; }
 
 @media (min-width: 500px) {
   .detail-page {

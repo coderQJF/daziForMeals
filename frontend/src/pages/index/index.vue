@@ -291,10 +291,9 @@ onShareAppMessage(() => ({
                     <text>{{ wishCountFor(recipe.id) }} 人想吃</text>
                   </view>
                 </view>
-                <text class="dish-card__tutorial">查看做法 ›</text>
                 <view class="dish-card__footer">
                   <text class="dish-card__tag">{{ dishTagFor(recipe) }}</text>
-                  <text v-if="mealConfirmed && mealStore.dishFor(recipe.id)" class="dish-card__selected">已选入菜单</text>
+                  <text v-if="mealConfirmed && mealStore.dishFor(recipe.id)" class="dish-card__selected" aria-label="已选入菜单">✓</text>
                   <DishSelectionButton
                     v-else-if="!mealConfirmed"
                     :dish-name="recipe.name"
@@ -380,10 +379,9 @@ onShareAppMessage(() => ({
 .wish-face image { width: 100%; height: 100%; }
 .dish-card__body { display: flex; min-width: 0; padding: 18rpx 14rpx 14rpx 18rpx; flex: 1; flex-direction: column; box-sizing: border-box; }
 .dish-card__name { display: block; min-width: 0; overflow: hidden; flex: 1; color: $color-text; font-size: 29rpx; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-.dish-card__footer { display: flex; min-height: 68rpx; margin-top: auto; align-items: center; justify-content: space-between; gap: 8rpx; }
+.dish-card__footer { display: flex; min-height: 68rpx; margin-top: auto; align-items: flex-end; justify-content: space-between; gap: 8rpx; }
 .dish-card__tag { min-width: 0; overflow: hidden; padding: 7rpx 10rpx; border-radius: 12rpx; background: #fff3e3; color: #b56b21; font-size: 24rpx; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-.dish-card__selected { flex: 0 0 auto; color: $color-primary-deep; font-size: 24rpx; font-weight: 700; }
-.dish-card__tutorial { margin-top: 10rpx; color: $color-text-secondary; font-size: 24rpx; line-height: 1.3; }
+.dish-card__selected { display: flex; width: 68rpx; height: 68rpx; flex: 0 0 68rpx; align-items: center; justify-content: center; border: 2rpx solid $color-primary; border-radius: 50%; background: $color-page; color: $color-primary-deep; font-size: 34rpx; font-weight: 750; box-sizing: border-box; }
 
 .state, .empty { display: flex; min-height: 300rpx; align-items: center; justify-content: center; border-radius: 28rpx; background: rgba(255, 255, 255, .84); color: $color-text-secondary; font-size: 26rpx; }
 .state--error { color: #c96531; }

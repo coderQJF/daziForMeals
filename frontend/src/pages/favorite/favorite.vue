@@ -59,8 +59,12 @@ function openRecipe(recipe: KitchenRecipe) {
   uni.navigateTo({ url: `/pages/recipe/detail?id=${recipe.id}` })
 }
 
-function toggleFavorite(recipe: KitchenRecipe) {
-  recipeStore.toggleFavorite(recipe.id)
+async function toggleFavorite(recipe: KitchenRecipe) {
+  const saved = await recipeStore.toggleFavorite(recipe.id)
+  if (!saved) {
+    if (recipeStore.userErrorMessage) uni.showToast({ title: recipeStore.userErrorMessage, icon: 'none' })
+    return
+  }
   uni.showToast({
     title: recipeStore.isFavorite(recipe.id) ? '已加入收藏' : '已取消收藏',
     icon: 'none',
