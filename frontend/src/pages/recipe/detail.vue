@@ -2,21 +2,19 @@
 import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
+import { returnFromRecipeDetail } from '@/config/recipe-navigation'
 import { useRecipeStore } from '@/stores/recipe'
 
 const store = useRecipeStore()
 const { recommendation, loading, errorMessage } = storeToRefs(store)
 const requestedRecipeId = ref(0)
+const fromShare = ref(false)
 const isCurrentRecipe = computed(() => recommendation.value.id === requestedRecipeId.value)
 const ingredients = computed(() => recommendation.value.ingredients)
 const steps = computed(() => recommendation.value.steps)
 
 function goBack() {
-  if (getCurrentPages().length > 1) {
-    uni.navigateBack()
-    return
-  }
-  uni.redirectTo({ url: '/pages/recipe/list' })
+  returnFromRecipeDetail(fromShare.value)
 }
 
 async function loadDetail() {
@@ -29,6 +27,7 @@ async function loadDetail() {
 }
 
 onLoad(async (query) => {
+  fromShare.value = query?.entry === 'share'
   const recipeId = Number(query?.id)
   if (!Number.isInteger(recipeId) || recipeId < 1) {
     errorMessage.value = '菜谱编号无效'
@@ -40,7 +39,7 @@ onLoad(async (query) => {
 
 onShareAppMessage(() => ({
   title: `${recommendation.value.name}｜饭搭子`,
-  path: `/pages/recipe/detail?id=${recommendation.value.id}`,
+  path: `/pages/recipe/detail?id=${recommendation.value.id}&entry=share`,
 }))
 </script>
 

@@ -9,10 +9,27 @@ Component({
       { pagePath: '/pages/user/user', text: '我的', icon: '/static/tabbar/user.png', selectedIcon: '/static/tabbar/user-active.png' },
     ],
   },
+  lifetimes: {
+    attached() {
+      this.syncSelection()
+    },
+  },
+  pageLifetimes: {
+    show() {
+      this.syncSelection()
+    },
+  },
   methods: {
+    syncSelection() {
+      const pages = getCurrentPages()
+      const currentRoute = pages[pages.length - 1]?.route
+      const selected = this.data.list.findIndex(item => item.pagePath === `/${currentRoute}`)
+      if (selected >= 0) this.setData({ selected })
+    },
     switchTab(event) {
-      const { index, path } = event.currentTarget.dataset
-      if (index === this.data.selected) return
+      const { path } = event.currentTarget.dataset
+      const pages = getCurrentPages()
+      if (`/${pages[pages.length - 1]?.route}` === path) return
       wx.switchTab({ url: path })
     },
   },

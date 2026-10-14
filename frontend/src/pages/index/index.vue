@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import DishSelectionButton from '@/components/DishSelectionButton.vue'
 import { useMealClock } from '@/composables/useMealClock'
+import { useTabBarSelection } from '@/composables/useTabBarSelection'
 import { dishImageFor, dishTagFor, mealDishKindFor, type MealDishKind } from '@/config/dish-images'
 import { mealSharePath } from '@/config/meal-share'
 import { openRecipeDetail } from '@/config/recipe-navigation'
@@ -14,6 +15,7 @@ import type { MealWisher } from '@/types/meal'
 
 const mealStore = useMealStore()
 useMealClock()
+useTabBarSelection(0)
 const recipeStore = useRecipeStore()
 const {
   meal, catalog: recipes, categories, loggedIn, mealLoading, catalogLoading,
@@ -211,7 +213,6 @@ onLoad(async (options) => {
   bootstrapped.value = true
 })
 onShow(() => {
-  uni.hideTabBar({ animation: false, fail: () => undefined })
   mealStore.refreshAuth()
   if (bootstrapped.value) void loadMealSession(true)
 })
