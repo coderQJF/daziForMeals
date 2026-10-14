@@ -111,7 +111,8 @@ test('the request lock keeps unrelated dish visuals stable and marks only the pe
   const component = readFileSync(new URL('../src/components/DishSelectionButton.vue', import.meta.url), 'utf8')
   assert.match(component, /'dish-selection--pending': pending/)
   assert.match(component, /\.dish-selection\[disabled\] \{ opacity: 1;/)
-  assert.match(component, /\.dish-selection--selected\[disabled\] \{ background: \$color-page; color: \$color-primary-deep;/)
+  assert.match(component, /\.dish-selection\[disabled\] \{ opacity: 1; background: \$color-primary;/)
+  assert.doesNotMatch(component, /background: \$color-page/)
   assert.match(component, /\.dish-selection--pending\[disabled\] \{ opacity: \.6;/)
   const home = readFileSync(new URL('../src/pages/index/index.vue', import.meta.url), 'utf8')
   const menu = readFileSync(new URL('../src/pages/menu/menu.vue', import.meta.url), 'utf8')
@@ -119,4 +120,23 @@ test('the request lock keeps unrelated dish visuals stable and marks only the pe
   assert.match(menu, /:pending="pendingRecipeId === item\.recipe\.id"/)
   // Concurrent writes remain guarded, without using that global flag to fade all rows.
   for (const source of [home, menu]) assert.match(source, /:disabled="pendingRecipeId !== null/)
+})
+
+test('approved A buttons use round white vector marks instead of font glyphs', () => {
+  const component = readFileSync(new URL('../src/components/DishSelectionButton.vue', import.meta.url), 'utf8')
+  assert.match(component, /selected \? '\/static\/icons\/dish-selected.svg' : '\/static\/icons\/dish-add.svg'/)
+  assert.doesNotMatch(component, /<text/)
+  for (const name of ['dish-selected', 'dish-add']) {
+    const svg = readFileSync(new URL(`../src/static/icons/${name}.svg`, import.meta.url), 'utf8')
+    assert.match(svg, /viewBox="0 0 24 24"/)
+    assert.match(svg, /stroke="#fff"/)
+    assert.match(svg, /stroke-linecap="round" stroke-linejoin="round"/)
+  }
+})
+
+test('saved favorites share the orange fill while unsaved favorites keep their white outline', () => {
+  const detail = readFileSync(new URL('../src/pages/recipe/detail.vue', import.meta.url), 'utf8')
+  assert.match(detail, /'bottom-button--saved': recommendation.isFavorite/)
+  assert.match(detail, /\.bottom-button--saved,\s*\.bottom-button--share \{ color: #fff; background: \$color-primary;/)
+  assert.match(detail, /\.bottom-button--favorite \{[^}]*background: \$color-card;/)
 })

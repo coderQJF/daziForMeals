@@ -12,18 +12,15 @@ const emit = defineEmits<{ toggle: [] }>()
     :aria-pressed="selected"
     @click.stop="emit('toggle')"
   >
-    <text class="dish-selection__icon">{{ selected ? '✓' : '＋' }}</text>
+    <image class="dish-selection__icon" :src="selected ? '/static/icons/dish-selected.svg' : '/static/icons/dish-add.svg'" mode="aspectFit" aria-hidden="true" />
   </button>
 </template>
 
 <style scoped lang="scss">
 @use '@/styles/tokens.scss' as *;
 .dish-selection { display: inline-flex; width: 68rpx; height: 68rpx; margin: 0; padding: 0; flex: 0 0 68rpx; align-items: center; justify-content: center; border: 2rpx solid $color-primary; border-radius: 50%; background: $color-primary; color: #fff; font-weight: 750; line-height: 1; box-sizing: border-box; }
-.dish-selection--selected { background: $color-page; color: $color-primary-deep; }
-.dish-selection__icon { font-size: 40rpx; line-height: 1; }
-.dish-selection--selected .dish-selection__icon { font-size: 34rpx; }
+.dish-selection__icon { width: 36rpx; height: 36rpx; }
 /* The request lock disables all actions, but must not gray out every dish. */
 .dish-selection[disabled] { opacity: 1; background: $color-primary; border-color: $color-primary; color: #fff; }
-.dish-selection--selected[disabled] { background: $color-page; color: $color-primary-deep; }
 .dish-selection--pending[disabled] { opacity: .6; }
 </style>

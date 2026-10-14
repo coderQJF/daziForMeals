@@ -112,7 +112,7 @@ onShareAppMessage(() => ({
     </view>
 
     <view class="bottom-actions">
-      <button class="bottom-button bottom-button--favorite" :loading="favoriteSaving" :disabled="favoriteSaving || userLoading" @click="toggleFavorite">
+      <button class="bottom-button bottom-button--favorite" :class="{ 'bottom-button--saved': recommendation.isFavorite }" :loading="favoriteSaving" :disabled="favoriteSaving || userLoading" @click="toggleFavorite">
         <text>{{ recommendation.isFavorite ? '已收藏' : '收藏' }}</text>
       </button>
       <button class="bottom-button bottom-button--share" open-type="share">分享</button>
@@ -449,6 +449,7 @@ onShareAppMessage(() => ({
   background: $color-card;
 }
 
+.bottom-button--saved,
 .bottom-button--share { color: #fff; background: $color-primary; }
 .bottom-button[disabled] { opacity: .6; }
 

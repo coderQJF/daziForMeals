@@ -293,7 +293,9 @@ onShareAppMessage(() => ({
                 </view>
                 <view class="dish-card__footer">
                   <text class="dish-card__tag">{{ dishTagFor(recipe) }}</text>
-                  <text v-if="mealConfirmed && mealStore.dishFor(recipe.id)" class="dish-card__selected" aria-label="已选入菜单">✓</text>
+                  <view v-if="mealConfirmed && mealStore.dishFor(recipe.id)" class="dish-card__selected" aria-label="已选入菜单">
+                    <image src="/static/icons/dish-selected.svg" mode="aspectFit" aria-hidden="true" />
+                  </view>
                   <DishSelectionButton
                     v-else-if="!mealConfirmed"
                     :dish-name="recipe.name"
@@ -382,7 +384,8 @@ onShareAppMessage(() => ({
 .dish-card__name { display: block; min-width: 0; overflow: hidden; flex: 1; color: $color-text; font-size: 29rpx; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .dish-card__footer { display: flex; min-height: 68rpx; margin-top: auto; align-items: flex-end; justify-content: space-between; gap: 8rpx; }
 .dish-card__tag { min-width: 0; overflow: hidden; padding: 7rpx 10rpx; border-radius: 12rpx; background: #fff3e3; color: #b56b21; font-size: 24rpx; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-.dish-card__selected { display: flex; width: 68rpx; height: 68rpx; flex: 0 0 68rpx; align-items: center; justify-content: center; border: 2rpx solid $color-primary; border-radius: 50%; background: $color-page; color: $color-primary-deep; font-size: 34rpx; font-weight: 750; box-sizing: border-box; }
+.dish-card__selected { display: flex; width: 68rpx; height: 68rpx; flex: 0 0 68rpx; align-items: center; justify-content: center; border: 2rpx solid $color-primary; border-radius: 50%; background: $color-primary; box-sizing: border-box; }
+.dish-card__selected image { width: 36rpx; height: 36rpx; }
 
 .state, .empty { display: flex; min-height: 300rpx; align-items: center; justify-content: center; border-radius: 28rpx; background: rgba(255, 255, 255, .84); color: $color-text-secondary; font-size: 26rpx; }
 .state--error { color: #c96531; }
