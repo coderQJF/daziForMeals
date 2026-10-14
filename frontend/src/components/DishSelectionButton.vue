@@ -1,12 +1,12 @@
 <script setup lang="ts">
-defineProps<{ selected: boolean; disabled?: boolean; dishName: string }>()
+defineProps<{ selected: boolean; disabled?: boolean; pending?: boolean; dishName: string }>()
 const emit = defineEmits<{ toggle: [] }>()
 </script>
 
 <template>
   <button
     class="dish-selection"
-    :class="{ 'dish-selection--selected': selected }"
+    :class="{ 'dish-selection--selected': selected, 'dish-selection--pending': pending }"
     :disabled="disabled"
     :aria-label="`${selected ? '取消想吃' : '想吃'}${dishName}`"
     :aria-pressed="selected"
@@ -22,5 +22,8 @@ const emit = defineEmits<{ toggle: [] }>()
 .dish-selection--selected { background: $color-page; color: $color-primary-deep; }
 .dish-selection__icon { font-size: 40rpx; line-height: 1; }
 .dish-selection--selected .dish-selection__icon { font-size: 34rpx; }
-.dish-selection[disabled] { opacity: .6; }
+/* The request lock disables all actions, but must not gray out every dish. */
+.dish-selection[disabled] { opacity: 1; background: $color-primary; border-color: $color-primary; color: #fff; }
+.dish-selection--selected[disabled] { background: $color-page; color: $color-primary-deep; }
+.dish-selection--pending[disabled] { opacity: .6; }
 </style>

@@ -298,6 +298,7 @@ onShareAppMessage(() => ({
                     v-else-if="!mealConfirmed"
                     :dish-name="recipe.name"
                     :selected="mealStore.hasWished(recipe.id)"
+                    :pending="pendingRecipeId === recipe.id"
                     :disabled="pendingRecipeId !== null || mealLoading"
                     @toggle="toggleWish(recipe.id)"
                   />

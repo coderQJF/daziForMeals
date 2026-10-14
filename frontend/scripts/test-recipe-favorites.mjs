@@ -106,3 +106,17 @@ test('selection buttons are icon-only and tutorial hints are absent', () => {
     assert.doesNotMatch(readFileSync(new URL(path, import.meta.url), 'utf8'), /查看做法|dish-card__tutorial/)
   }
 })
+
+test('the request lock keeps unrelated dish visuals stable and marks only the pending recipe', () => {
+  const component = readFileSync(new URL('../src/components/DishSelectionButton.vue', import.meta.url), 'utf8')
+  assert.match(component, /'dish-selection--pending': pending/)
+  assert.match(component, /\.dish-selection\[disabled\] \{ opacity: 1;/)
+  assert.match(component, /\.dish-selection--selected\[disabled\] \{ background: \$color-page; color: \$color-primary-deep;/)
+  assert.match(component, /\.dish-selection--pending\[disabled\] \{ opacity: \.6;/)
+  const home = readFileSync(new URL('../src/pages/index/index.vue', import.meta.url), 'utf8')
+  const menu = readFileSync(new URL('../src/pages/menu/menu.vue', import.meta.url), 'utf8')
+  assert.match(home, /:pending="pendingRecipeId === recipe\.id"/)
+  assert.match(menu, /:pending="pendingRecipeId === item\.recipe\.id"/)
+  // Concurrent writes remain guarded, without using that global flag to fade all rows.
+  for (const source of [home, menu]) assert.match(source, /:disabled="pendingRecipeId !== null/)
+})
